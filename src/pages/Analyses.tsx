@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { AnalysisResults } from "@/components/ui/AnalysisResults";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { 
@@ -20,7 +21,7 @@ import {
 interface DataSource {
   id: string;
   name: string;
-  schema_info: Record<string, unknown> | null;
+  schema_info: Json | null;
   row_count: number | null;
 }
 
