@@ -95,7 +95,7 @@ Tipo de análise: ${analysisType || 'full'}`;
     });
   } catch (error) {
     console.error("Error in analyze-data:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

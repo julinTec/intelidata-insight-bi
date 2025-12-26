@@ -6,6 +6,12 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
+import Upload from "./pages/Upload";
+import Projects from "./pages/Projects";
+import Analyses from "./pages/Analyses";
+import Templates from "./pages/Templates";
+import Connections from "./pages/Connections";
+import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -21,6 +27,12 @@ const App = () => (
             <Route path="/" element={<Dashboard />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/upload" element={<Upload />} />
+            <Route path="/projects" element={<Projects />} />
+            <Route path="/analyses" element={<Analyses />} />
+            <Route path="/templates" element={<Templates />} />
+            <Route path="/connections" element={<Connections />} />
+            <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
