@@ -15,14 +15,22 @@ import {
   Sparkles, 
   Eye,
   Code2,
-  Play
+  Play,
+  RefreshCw
 } from "lucide-react";
+
+interface ConnectionConfig {
+  url?: string;
+  dataPath?: string | null;
+}
 
 interface DataSource {
   id: string;
   name: string;
+  source_type: string;
   schema_info: Json | null;
   row_count: number | null;
+  connection_config: Json | null;
 }
 
 interface Project {
@@ -62,6 +70,7 @@ export default function Analyses() {
   const [analysisType, setAnalysisType] = useState<string>("full");
   const [viewMode, setViewMode] = useState<"executive" | "analyst">("executive");
   const [loading, setLoading] = useState(false);
+  const [fetchingData, setFetchingData] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
 
   useEffect(() => {
@@ -87,9 +96,41 @@ export default function Analyses() {
   const loadDataSources = async (projectId: string) => {
     const { data } = await supabase
       .from("data_sources")
-      .select("id, name, schema_info, row_count")
+      .select("id, name, source_type, schema_info, row_count, connection_config")
       .eq("project_id", projectId);
     setDataSources(data || []);
+  };
+
+  const extractDataFromPath = (jsonData: unknown, dataPath: string | null | undefined): unknown => {
+    if (!dataPath) return jsonData;
+    return dataPath.split('.').reduce((obj: unknown, key: string) => {
+      if (obj && typeof obj === 'object' && key in obj) {
+        return (obj as Record<string, unknown>)[key];
+      }
+      return undefined;
+    }, jsonData);
+  };
+
+  const fetchApiJsonData = async (dataSource: DataSource): Promise<Record<string, unknown>[]> => {
+    const config = dataSource.connection_config as ConnectionConfig | null;
+    if (!config?.url) {
+      throw new Error("URL não configurada para esta fonte de dados");
+    }
+
+    const response = await fetch(config.url);
+    if (!response.ok) {
+      throw new Error(`Erro ao buscar dados: HTTP ${response.status}`);
+    }
+
+    const jsonData = await response.json();
+    const data = extractDataFromPath(jsonData, config.dataPath);
+    
+    if (data === undefined) {
+      throw new Error(`Caminho "${config.dataPath}" não encontrado`);
+    }
+
+    const records = Array.isArray(data) ? data : [data];
+    return records as Record<string, unknown>[];
   };
 
   const runAnalysis = async () => {
@@ -105,12 +146,29 @@ export default function Analyses() {
       const dataSource = dataSources.find((d) => d.id === selectedDataSource);
       if (!dataSource) throw new Error("Data source não encontrado");
 
+      let sampleData: Record<string, unknown>[] = [];
       const schemaInfo = dataSource.schema_info;
+
+      // For API JSON sources, fetch fresh data in real-time
+      if (dataSource.source_type === "api_json") {
+        setFetchingData(true);
+        try {
+          const freshData = await fetchApiJsonData(dataSource);
+          sampleData = freshData.slice(0, 100) as Record<string, unknown>[]; // Limit to 100 records for analysis
+          toast.success(`Dados atualizados: ${freshData.length} registros`);
+        } catch (error) {
+          toast.error(`Erro ao buscar dados: ${error instanceof Error ? error.message : "Erro desconhecido"}`);
+          setLoading(false);
+          setFetchingData(false);
+          return;
+        }
+        setFetchingData(false);
+      }
 
       const { data, error } = await supabase.functions.invoke("analyze-data", {
         body: {
           schemaInfo,
-          sampleData: [],
+          sampleData,
           analysisType,
         },
       });
@@ -152,6 +210,8 @@ export default function Analyses() {
       setLoading(false);
     }
   };
+
+  const getSelectedDataSource = () => dataSources.find((d) => d.id === selectedDataSource);
 
   return (
     <AppLayout>
@@ -202,7 +262,7 @@ export default function Analyses() {
                 <SelectContent>
                   {dataSources.map((ds) => (
                     <SelectItem key={ds.id} value={ds.id}>
-                      {ds.name} ({ds.row_count} rows)
+                      {ds.name} {ds.source_type === "api_json" && "(API)"} ({ds.row_count ?? 0} rows)
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -243,6 +303,16 @@ export default function Analyses() {
             </div>
           </div>
 
+          {/* API JSON indicator */}
+          {getSelectedDataSource()?.source_type === "api_json" && (
+            <div className="mt-4 p-3 rounded-lg bg-primary/10 border border-primary/20 flex items-center gap-2">
+              <RefreshCw className="h-4 w-4 text-primary" />
+              <span className="text-sm text-primary">
+                Dados serão buscados em tempo real ao executar a análise
+              </span>
+            </div>
+          )}
+
           <div className="flex justify-end mt-6">
             <Button
               onClick={runAnalysis}
@@ -252,7 +322,7 @@ export default function Analyses() {
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Analisando...
+                  {fetchingData ? "Buscando dados..." : "Analisando..."}
                 </>
               ) : (
                 <>
@@ -268,9 +338,14 @@ export default function Analyses() {
         {loading && (
           <div className="glass-card rounded-xl p-12 text-center">
             <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Analisando seus dados...</h3>
+            <h3 className="text-xl font-semibold mb-2">
+              {fetchingData ? "Buscando dados em tempo real..." : "Analisando seus dados..."}
+            </h3>
             <p className="text-muted-foreground">
-              A IA está identificando KPIs, sugerindo gráficos e gerando queries
+              {fetchingData 
+                ? "Conectando à API e baixando dados atualizados"
+                : "A IA está identificando KPIs, sugerindo gráficos e gerando queries"
+              }
             </p>
           </div>
         )}
