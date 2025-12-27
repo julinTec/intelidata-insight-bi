@@ -4,6 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DataTable } from "@/components/ui/DataTable";
+import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
+import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { 
   Database, 
@@ -13,43 +17,127 @@ import {
   XCircle,
   Server,
   Lock,
-  Globe
+  Globe,
+  Link2,
+  FileJson
 } from "lucide-react";
+
+type ConnectionType = "postgresql" | "mysql" | "api_json";
 
 interface Connection {
   id: string;
   name: string;
-  type: "postgresql" | "mysql";
-  host: string;
-  port: number;
-  database: string;
+  type: ConnectionType;
+  host?: string;
+  port?: number;
+  database?: string;
+  connectionUrl?: string;
+  dataPath?: string;
   status: "connected" | "error" | "pending";
 }
 
+interface ExtractedSchema {
+  columns: Array<{ name: string; type: string }>;
+}
+
 export default function Connections() {
+  const { user } = useAuth();
   const [connections, setConnections] = useState<Connection[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
+  const [sampleData, setSampleData] = useState<Record<string, unknown>[] | null>(null);
+  const [extractedSchema, setExtractedSchema] = useState<ExtractedSchema | null>(null);
   
   const [formData, setFormData] = useState({
     name: "",
-    type: "postgresql" as "postgresql" | "mysql",
+    type: "api_json" as ConnectionType,
+    // DB fields
     host: "",
     port: 5432,
     database: "",
     username: "",
     password: "",
+    // API JSON fields
+    connectionUrl: "",
+    dataPath: "",
   });
 
-  const testConnection = async () => {
+  const extractSchemaFromJson = (sample: Record<string, unknown>): { columns: Array<{ name: string; type: string }> } => {
+    const columns: Array<{ name: string; type: string }> = [];
+    
+    for (const [key, value] of Object.entries(sample || {})) {
+      let type: string = typeof value;
+      if (value === null) type = "null";
+      else if (Array.isArray(value)) type = "array";
+      else if (value instanceof Date) type = "date";
+      
+      columns.push({ name: key, type });
+    }
+    
+    return { columns };
+  };
+
+  const extractDataFromPath = (jsonData: unknown, dataPath: string): unknown => {
+    if (!dataPath) return jsonData;
+    return dataPath.split('.').reduce((obj: unknown, key: string) => {
+      if (obj && typeof obj === 'object' && key in obj) {
+        return (obj as Record<string, unknown>)[key];
+      }
+      return undefined;
+    }, jsonData);
+  };
+
+  const testApiConnection = async () => {
+    setTesting(true);
+    setTestResult(null);
+    setSampleData(null);
+    setExtractedSchema(null);
+
+    try {
+      const response = await fetch(formData.connectionUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      
+      const jsonData = await response.json();
+      
+      // Extract data using dataPath if provided
+      let data = extractDataFromPath(jsonData, formData.dataPath);
+      
+      if (data === undefined) {
+        throw new Error(`Caminho "${formData.dataPath}" não encontrado no JSON`);
+      }
+      
+      // Normalize to array
+      const records = Array.isArray(data) ? data : [data];
+      
+      if (records.length === 0) {
+        throw new Error("Nenhum dado encontrado");
+      }
+      
+      // Extract schema from first record
+      const firstRecord = records[0] as Record<string, unknown>;
+      const schema = extractSchemaFromJson(firstRecord);
+      
+      setExtractedSchema(schema);
+      setSampleData(records.slice(0, 5) as Record<string, unknown>[]);
+      setTestResult("success");
+      toast.success(`Conectado! ${records.length} registro(s) encontrado(s)`);
+    } catch (error) {
+      setTestResult("error");
+      toast.error(`Falha ao conectar: ${error instanceof Error ? error.message : "Erro desconhecido"}`);
+    }
+    
+    setTesting(false);
+  };
+
+  const testDbConnection = async () => {
     setTesting(true);
     setTestResult(null);
 
-    // Simulated connection test
+    // Simulated connection test for DB
     await new Promise((resolve) => setTimeout(resolve, 2000));
     
-    // For demo purposes, always succeed if fields are filled
     if (formData.host && formData.database && formData.username) {
       setTestResult("success");
       toast.success("Conexão bem-sucedida!");
@@ -61,35 +149,140 @@ export default function Connections() {
     setTesting(false);
   };
 
-  const saveConnection = () => {
-    if (!formData.name || !formData.host || !formData.database) {
-      toast.error("Preencha todos os campos obrigatórios");
+  const testConnection = async () => {
+    if (formData.type === "api_json") {
+      await testApiConnection();
+    } else {
+      await testDbConnection();
+    }
+  };
+
+  const saveConnection = async () => {
+    if (!formData.name) {
+      toast.error("Preencha o nome da conexão");
       return;
     }
 
-    const newConnection: Connection = {
-      id: Date.now().toString(),
-      name: formData.name,
-      type: formData.type,
-      host: formData.host,
-      port: formData.port,
-      database: formData.database,
-      status: testResult === "success" ? "connected" : "pending",
-    };
+    if (formData.type === "api_json") {
+      if (!formData.connectionUrl) {
+        toast.error("Preencha a URL do endpoint");
+        return;
+      }
+      if (testResult !== "success" || !extractedSchema) {
+        toast.error("Teste a conexão antes de salvar");
+        return;
+      }
 
-    setConnections([...connections, newConnection]);
+      setSaving(true);
+
+      try {
+        // Get first project for the user
+        const { data: project } = await supabase
+          .from("projects")
+          .select("id")
+          .eq("user_id", user!.id)
+          .limit(1)
+          .single();
+
+        if (!project) {
+          toast.error("Crie um projeto antes de adicionar conexões");
+          setSaving(false);
+          return;
+        }
+
+        // Calculate row count from sample data
+        const response = await fetch(formData.connectionUrl);
+        const jsonData = await response.json();
+        let data = extractDataFromPath(jsonData, formData.dataPath);
+        const records = Array.isArray(data) ? data : [data];
+
+        // Save as data source - convert to JSON-compatible format
+        const schemaInfoForDb = extractedSchema 
+          ? { columns: extractedSchema.columns.map(c => ({ name: c.name, type: c.type })) }
+          : null;
+        
+        const { data: insertedData, error } = await supabase.from("data_sources").insert([{
+          user_id: user!.id,
+          project_id: project.id,
+          name: formData.name,
+          source_type: "api_json",
+          connection_config: {
+            url: formData.connectionUrl,
+            dataPath: formData.dataPath || null,
+          },
+          schema_info: schemaInfoForDb,
+          row_count: records.length,
+        }]).select();
+
+        if (error) throw error;
+
+        // Add to local connections list
+        const newConnection: Connection = {
+          id: insertedData?.[0]?.id || Date.now().toString(),
+          name: formData.name,
+          type: "api_json",
+          connectionUrl: formData.connectionUrl,
+          dataPath: formData.dataPath,
+          status: "connected",
+        };
+
+        setConnections([...connections, newConnection]);
+        resetForm();
+        toast.success("Conexão salva como fonte de dados!");
+      } catch (error) {
+        console.error(error);
+        toast.error("Erro ao salvar conexão");
+      }
+
+      setSaving(false);
+    } else {
+      // DB connection (local only for now)
+      if (!formData.host || !formData.database) {
+        toast.error("Preencha todos os campos obrigatórios");
+        return;
+      }
+
+      const newConnection: Connection = {
+        id: Date.now().toString(),
+        name: formData.name,
+        type: formData.type,
+        host: formData.host,
+        port: formData.port,
+        database: formData.database,
+        status: testResult === "success" ? "connected" : "pending",
+      };
+
+      setConnections([...connections, newConnection]);
+      resetForm();
+      toast.success("Conexão salva!");
+    }
+  };
+
+  const resetForm = () => {
     setShowForm(false);
     setFormData({
       name: "",
-      type: "postgresql",
+      type: "api_json",
       host: "",
       port: 5432,
       database: "",
       username: "",
       password: "",
+      connectionUrl: "",
+      dataPath: "",
     });
     setTestResult(null);
-    toast.success("Conexão salva!");
+    setSampleData(null);
+    setExtractedSchema(null);
+  };
+
+  const getTableColumns = () => {
+    if (!sampleData || sampleData.length === 0) return [];
+    return Object.keys(sampleData[0]).map((key) => ({
+      key,
+      label: key,
+      sortable: true,
+    }));
   };
 
   return (
@@ -100,10 +293,10 @@ export default function Connections() {
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-3">
               <Database className="h-8 w-8 text-primary" />
-              Conexões de Banco
+              Conexões de Dados
             </h1>
             <p className="text-muted-foreground mt-2">
-              Configure conexões com bancos de dados externos
+              Configure conexões com bancos de dados ou APIs JSON
             </p>
           </div>
 
@@ -125,96 +318,160 @@ export default function Connections() {
                   id="name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Ex: Produção Principal"
+                  placeholder="Ex: API Produção"
                   className="input-dark"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Tipo de Banco</Label>
+                <Label>Tipo de Conexão</Label>
                 <Select
                   value={formData.type}
-                  onValueChange={(value: "postgresql" | "mysql") => 
-                    setFormData({ ...formData, type: value, port: value === "postgresql" ? 5432 : 3306 })
-                  }
+                  onValueChange={(value: ConnectionType) => {
+                    setFormData({ 
+                      ...formData, 
+                      type: value, 
+                      port: value === "postgresql" ? 5432 : value === "mysql" ? 3306 : formData.port 
+                    });
+                    setTestResult(null);
+                    setSampleData(null);
+                    setExtractedSchema(null);
+                  }}
                 >
                   <SelectTrigger className="input-dark">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="postgresql">PostgreSQL</SelectItem>
-                    <SelectItem value="mysql">MySQL</SelectItem>
+                    <SelectItem value="api_json">
+                      <div className="flex items-center gap-2">
+                        <Link2 className="h-4 w-4" />
+                        API / Link JSON
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="postgresql">
+                      <div className="flex items-center gap-2">
+                        <Database className="h-4 w-4" />
+                        PostgreSQL
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="mysql">
+                      <div className="flex items-center gap-2">
+                        <Database className="h-4 w-4" />
+                        MySQL
+                      </div>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="host">Host</Label>
-                <div className="relative">
-                  <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="host"
-                    value={formData.host}
-                    onChange={(e) => setFormData({ ...formData, host: e.target.value })}
-                    placeholder="localhost ou IP"
-                    className="input-dark pl-10"
-                  />
-                </div>
-              </div>
+              {/* API JSON Fields */}
+              {formData.type === "api_json" && (
+                <>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="connectionUrl">URL do Endpoint</Label>
+                    <div className="relative">
+                      <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="connectionUrl"
+                        value={formData.connectionUrl}
+                        onChange={(e) => setFormData({ ...formData, connectionUrl: e.target.value })}
+                        placeholder="https://seuapp.lovable.app/api/dados"
+                        className="input-dark pl-10"
+                      />
+                    </div>
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="port">Porta</Label>
-                <div className="relative">
-                  <Server className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="port"
-                    type="number"
-                    value={formData.port}
-                    onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) })}
-                    className="input-dark pl-10"
-                  />
-                </div>
-              </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="dataPath">Caminho dos Dados (opcional)</Label>
+                    <div className="relative">
+                      <FileJson className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="dataPath"
+                        value={formData.dataPath}
+                        onChange={(e) => setFormData({ ...formData, dataPath: e.target.value })}
+                        placeholder="Ex: data.records ou items"
+                        className="input-dark pl-10"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Se os dados estiverem aninhados no objeto JSON, especifique o caminho (ex: data.items)
+                    </p>
+                  </div>
+                </>
+              )}
 
-              <div className="space-y-2">
-                <Label htmlFor="database">Database</Label>
-                <div className="relative">
-                  <Database className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="database"
-                    value={formData.database}
-                    onChange={(e) => setFormData({ ...formData, database: e.target.value })}
-                    placeholder="Nome do banco"
-                    className="input-dark pl-10"
-                  />
-                </div>
-              </div>
+              {/* DB Fields */}
+              {formData.type !== "api_json" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="host">Host</Label>
+                    <div className="relative">
+                      <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="host"
+                        value={formData.host}
+                        onChange={(e) => setFormData({ ...formData, host: e.target.value })}
+                        placeholder="localhost ou IP"
+                        className="input-dark pl-10"
+                      />
+                    </div>
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="username">Usuário</Label>
-                <Input
-                  id="username"
-                  value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  placeholder="Usuário do banco"
-                  className="input-dark"
-                />
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="port">Porta</Label>
+                    <div className="relative">
+                      <Server className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="port"
+                        type="number"
+                        value={formData.port}
+                        onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) })}
+                        className="input-dark pl-10"
+                      />
+                    </div>
+                  </div>
 
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="password">Senha</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="password"
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    placeholder="Senha do banco"
-                    className="input-dark pl-10"
-                  />
-                </div>
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="database">Database</Label>
+                    <div className="relative">
+                      <Database className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="database"
+                        value={formData.database}
+                        onChange={(e) => setFormData({ ...formData, database: e.target.value })}
+                        placeholder="Nome do banco"
+                        className="input-dark pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="username">Usuário</Label>
+                    <Input
+                      id="username"
+                      value={formData.username}
+                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                      placeholder="Usuário do banco"
+                      className="input-dark"
+                    />
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="password">Senha</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="password"
+                        type="password"
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        placeholder="Senha do banco"
+                        className="input-dark pl-10"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Test Result */}
@@ -233,13 +490,43 @@ export default function Connections() {
               </div>
             )}
 
+            {/* Schema Preview */}
+            {extractedSchema && testResult === "success" && (
+              <div className="mt-4 p-4 rounded-lg bg-muted/30">
+                <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                  <FileJson className="h-4 w-4" />
+                  Schema Detectado
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {extractedSchema.columns.map((col) => (
+                    <span 
+                      key={col.name} 
+                      className="px-2 py-1 text-xs rounded bg-primary/10 text-primary"
+                    >
+                      {col.name}: <span className="text-muted-foreground">{col.type}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Data Preview */}
+            {sampleData && sampleData.length > 0 && testResult === "success" && (
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold mb-3">Preview dos Dados ({sampleData.length} registros)</h4>
+                <DataTable 
+                  columns={getTableColumns()} 
+                  data={sampleData}
+                  searchable={false}
+                  pageSize={5}
+                />
+              </div>
+            )}
+
             <div className="flex justify-end gap-3 mt-6">
               <Button
                 variant="outline"
-                onClick={() => {
-                  setShowForm(false);
-                  setTestResult(null);
-                }}
+                onClick={resetForm}
               >
                 Cancelar
               </Button>
@@ -253,8 +540,15 @@ export default function Connections() {
                   "Testar Conexão"
                 )}
               </Button>
-              <Button onClick={saveConnection} className="btn-gradient">
-                Salvar Conexão
+              <Button onClick={saveConnection} className="btn-gradient" disabled={saving}>
+                {saving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Salvando...
+                  </>
+                ) : (
+                  "Salvar Conexão"
+                )}
               </Button>
             </div>
           </div>
@@ -267,17 +561,32 @@ export default function Connections() {
               <div key={conn.id} className="glass-card rounded-xl p-6">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                    <Database className="h-5 w-5" />
+                    {conn.type === "api_json" ? (
+                      <Link2 className="h-5 w-5" />
+                    ) : (
+                      <Database className="h-5 w-5" />
+                    )}
                   </div>
                   <div>
                     <h3 className="font-semibold">{conn.name}</h3>
-                    <span className="text-xs text-muted-foreground uppercase">{conn.type}</span>
+                    <span className="text-xs text-muted-foreground uppercase">
+                      {conn.type === "api_json" ? "API JSON" : conn.type}
+                    </span>
                   </div>
                 </div>
 
                 <div className="space-y-2 text-sm text-muted-foreground">
-                  <p>Host: {conn.host}:{conn.port}</p>
-                  <p>Database: {conn.database}</p>
+                  {conn.type === "api_json" ? (
+                    <>
+                      <p className="truncate">URL: {conn.connectionUrl}</p>
+                      {conn.dataPath && <p>Path: {conn.dataPath}</p>}
+                    </>
+                  ) : (
+                    <>
+                      <p>Host: {conn.host}:{conn.port}</p>
+                      <p>Database: {conn.database}</p>
+                    </>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 mt-4">
@@ -303,10 +612,10 @@ export default function Connections() {
           </div>
         ) : !showForm && (
           <div className="glass-card rounded-xl p-12 text-center">
-            <Database className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+            <Link2 className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-xl font-semibold mb-2">Nenhuma conexão configurada</h3>
             <p className="text-muted-foreground mb-4">
-              Configure conexões com bancos de dados PostgreSQL ou MySQL
+              Configure conexões com APIs JSON ou bancos de dados
             </p>
             <Button onClick={() => setShowForm(true)} className="btn-gradient">
               <Plus className="h-4 w-4 mr-2" />
