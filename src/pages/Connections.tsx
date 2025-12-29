@@ -49,6 +49,7 @@ export default function Connections() {
   const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
   const [sampleData, setSampleData] = useState<Record<string, unknown>[] | null>(null);
   const [extractedSchema, setExtractedSchema] = useState<ExtractedSchema | null>(null);
+  const [detectedPaths, setDetectedPaths] = useState<{ path: string; length: number }[]>([]);
   
   const [formData, setFormData] = useState({
     name: "",
@@ -63,6 +64,24 @@ export default function Connections() {
     connectionUrl: "",
     dataPath: "",
   });
+
+  // Find all arrays in a nested JSON object
+  const findArrayPaths = (obj: unknown, path = ""): { path: string; length: number }[] => {
+    const results: { path: string; length: number }[] = [];
+    
+    if (Array.isArray(obj) && obj.length > 0) {
+      results.push({ path: path || "(raiz)", length: obj.length });
+    }
+    
+    if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+      for (const [key, value] of Object.entries(obj)) {
+        const newPath = path ? `${path}.${key}` : key;
+        results.push(...findArrayPaths(value, newPath));
+      }
+    }
+    
+    return results;
+  };
 
   const extractSchemaFromJson = (sample: Record<string, unknown>): { columns: Array<{ name: string; type: string }> } => {
     const columns: Array<{ name: string; type: string }> = [];
@@ -94,6 +113,7 @@ export default function Connections() {
     setTestResult(null);
     setSampleData(null);
     setExtractedSchema(null);
+    setDetectedPaths([]);
 
     try {
       const response = await fetch(formData.connectionUrl);
@@ -101,34 +121,89 @@ export default function Connections() {
       
       const jsonData = await response.json();
       
-      // Extract data using dataPath if provided
-      let data = extractDataFromPath(jsonData, formData.dataPath);
-      
-      if (data === undefined) {
-        throw new Error(`Caminho "${formData.dataPath}" não encontrado no JSON`);
+      // If dataPath is provided, use it directly
+      if (formData.dataPath) {
+        const data = extractDataFromPath(jsonData, formData.dataPath);
+        
+        if (data === undefined) {
+          throw new Error(`Caminho "${formData.dataPath}" não encontrado no JSON`);
+        }
+        
+        const records = Array.isArray(data) ? data : [data];
+        
+        if (records.length === 0) {
+          throw new Error("Nenhum dado encontrado");
+        }
+        
+        const firstRecord = records[0] as Record<string, unknown>;
+        const schema = extractSchemaFromJson(firstRecord);
+        
+        setExtractedSchema(schema);
+        setSampleData(records.slice(0, 5) as Record<string, unknown>[]);
+        setTestResult("success");
+        toast.success(`Conectado! ${records.length} registro(s) encontrado(s)`);
+      } else {
+        // Auto-detect arrays in the JSON
+        const paths = findArrayPaths(jsonData);
+        
+        if (paths.length === 0) {
+          // No arrays found, treat as single object
+          const records = Array.isArray(jsonData) ? jsonData : [jsonData];
+          const firstRecord = records[0] as Record<string, unknown>;
+          const schema = extractSchemaFromJson(firstRecord);
+          
+          setExtractedSchema(schema);
+          setSampleData(records.slice(0, 5) as Record<string, unknown>[]);
+          setTestResult("success");
+          toast.info(`Objeto detectado. Nenhum array encontrado.`);
+        } else if (paths.length === 1) {
+          // Single array found, use it automatically
+          const selectedPath = paths[0].path === "(raiz)" ? "" : paths[0].path;
+          const data = selectedPath ? extractDataFromPath(jsonData, selectedPath) : jsonData;
+          const records = Array.isArray(data) ? data : [data];
+          const firstRecord = records[0] as Record<string, unknown>;
+          const schema = extractSchemaFromJson(firstRecord);
+          
+          // Auto-fill the dataPath
+          setFormData(prev => ({ ...prev, dataPath: selectedPath }));
+          setExtractedSchema(schema);
+          setSampleData(records.slice(0, 5) as Record<string, unknown>[]);
+          setTestResult("success");
+          toast.success(`Array encontrado em "${selectedPath || 'raiz'}" com ${records.length} registro(s)`);
+        } else {
+          // Multiple arrays found, show selector
+          setDetectedPaths(paths);
+          toast.info(`${paths.length} arrays detectados. Selecione qual deseja usar.`);
+        }
       }
-      
-      // Normalize to array
-      const records = Array.isArray(data) ? data : [data];
-      
-      if (records.length === 0) {
-        throw new Error("Nenhum dado encontrado");
-      }
-      
-      // Extract schema from first record
-      const firstRecord = records[0] as Record<string, unknown>;
-      const schema = extractSchemaFromJson(firstRecord);
-      
-      setExtractedSchema(schema);
-      setSampleData(records.slice(0, 5) as Record<string, unknown>[]);
-      setTestResult("success");
-      toast.success(`Conectado! ${records.length} registro(s) encontrado(s)`);
     } catch (error) {
       setTestResult("error");
       toast.error(`Falha ao conectar: ${error instanceof Error ? error.message : "Erro desconhecido"}`);
     }
     
     setTesting(false);
+  };
+
+  const selectArrayPath = async (selectedPath: string) => {
+    const pathToUse = selectedPath === "(raiz)" ? "" : selectedPath;
+    setFormData(prev => ({ ...prev, dataPath: pathToUse }));
+    setDetectedPaths([]);
+    
+    try {
+      const response = await fetch(formData.connectionUrl);
+      const jsonData = await response.json();
+      const data = pathToUse ? extractDataFromPath(jsonData, pathToUse) : jsonData;
+      const records = Array.isArray(data) ? data : [data];
+      const firstRecord = records[0] as Record<string, unknown>;
+      const schema = extractSchemaFromJson(firstRecord);
+      
+      setExtractedSchema(schema);
+      setSampleData(records.slice(0, 5) as Record<string, unknown>[]);
+      setTestResult("success");
+      toast.success(`Selecionado: ${records.length} registro(s) em "${pathToUse || 'raiz'}"`);
+    } catch (error) {
+      toast.error("Erro ao carregar dados do caminho selecionado");
+    }
   };
 
   const testDbConnection = async () => {
@@ -274,6 +349,7 @@ export default function Connections() {
     setTestResult(null);
     setSampleData(null);
     setExtractedSchema(null);
+    setDetectedPaths([]);
   };
 
   const getTableColumns = () => {
@@ -394,9 +470,32 @@ export default function Connections() {
                       />
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Se os dados estiverem aninhados no objeto JSON, especifique o caminho (ex: data.items)
+                      Deixe vazio para auto-detectar. Se houver múltiplos arrays, você poderá escolher.
                     </p>
                   </div>
+
+                  {/* Detected Paths Selector */}
+                  {detectedPaths.length > 1 && (
+                    <div className="md:col-span-2 p-4 rounded-lg bg-primary/10 border border-primary/20">
+                      <p className="text-sm font-medium mb-3">
+                        Múltiplos arrays detectados. Selecione qual usar:
+                      </p>
+                      <div className="space-y-2">
+                        {detectedPaths.map((p) => (
+                          <button
+                            key={p.path}
+                            onClick={() => selectArrayPath(p.path)}
+                            className="w-full flex items-center justify-between p-3 rounded-lg bg-background/50 hover:bg-background/80 border border-border/50 transition-colors text-left"
+                          >
+                            <span className="font-mono text-sm">{p.path}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {p.length} registro(s)
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 
