@@ -111,11 +111,31 @@ export default function Analyses() {
     }, jsonData);
   };
 
+  const findArrayPaths = (obj: unknown, path = ""): { path: string; length: number }[] => {
+    const results: { path: string; length: number }[] = [];
+    
+    if (Array.isArray(obj) && obj.length > 0) {
+      results.push({ path: path || "(raiz)", length: obj.length });
+    }
+    
+    if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+      for (const [key, value] of Object.entries(obj)) {
+        const newPath = path ? `${path}.${key}` : key;
+        results.push(...findArrayPaths(value, newPath));
+      }
+    }
+    
+    return results;
+  };
+
   const fetchApiJsonData = async (dataSource: DataSource): Promise<Record<string, unknown>[]> => {
     const config = dataSource.connection_config as ConnectionConfig | null;
     if (!config?.url) {
       throw new Error("URL não configurada para esta fonte de dados");
     }
+
+    console.log("Fetching data from:", config.url);
+    console.log("Using dataPath:", config.dataPath);
 
     const response = await fetch(config.url);
     if (!response.ok) {
@@ -123,13 +143,34 @@ export default function Analyses() {
     }
 
     const jsonData = await response.json();
-    const data = extractDataFromPath(jsonData, config.dataPath);
+    let data = extractDataFromPath(jsonData, config.dataPath);
     
     if (data === undefined) {
       throw new Error(`Caminho "${config.dataPath}" não encontrado`);
     }
 
+    console.log("Extracted data type:", Array.isArray(data) ? "array" : typeof data);
+
+    // Se não for array, tentar encontrar arrays dentro do objeto
+    if (!Array.isArray(data) && typeof data === "object" && data !== null) {
+      const paths = findArrayPaths(data);
+      console.log("Auto-detected array paths:", paths);
+      
+      if (paths.length > 0) {
+        // Usar o maior array encontrado
+        const bestPath = paths.reduce((a, b) => a.length > b.length ? a : b);
+        const fullPath = config.dataPath 
+          ? `${config.dataPath}.${bestPath.path}` 
+          : bestPath.path;
+        
+        console.log(`Auto-detectado array em "${fullPath}" com ${bestPath.length} registros`);
+        data = extractDataFromPath(jsonData, fullPath);
+      }
+    }
+
     const records = Array.isArray(data) ? data : [data];
+    console.log("Records found:", records.length);
+    
     return records as Record<string, unknown>[];
   };
 
