@@ -1,25 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
+import { DashboardBuilder } from '@/components/ui/DashboardBuilder';
+import { DynamicKPI } from '@/components/ui/DynamicKPI';
+import { DynamicChart } from '@/components/ui/DynamicChart';
+import type { Json } from '@/integrations/supabase/types';
 import { 
-  TrendingUp, 
-  TrendingDown, 
-  DollarSign, 
-  BarChart3, 
-  PieChart, 
   Upload, 
   Plus,
-  ArrowUpRight,
-  ArrowDownRight,
   Sparkles,
   FolderKanban,
-  FileSpreadsheet
+  FileSpreadsheet,
+  PieChart,
+  Trash2,
+  LayoutDashboard
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
+import { toast } from 'sonner';
 
 interface Project {
   id: string;
@@ -29,80 +29,65 @@ interface Project {
   created_at: string;
 }
 
-// Sample data for charts
-const revenueData = [
-  { month: 'Jan', value: 45000 },
-  { month: 'Fev', value: 52000 },
-  { month: 'Mar', value: 48000 },
-  { month: 'Abr', value: 61000 },
-  { month: 'Mai', value: 55000 },
-  { month: 'Jun', value: 67000 },
-];
-
-const expenseData = [
-  { category: 'Operacional', value: 35000, color: 'hsl(210, 100%, 60%)' },
-  { category: 'Marketing', value: 15000, color: 'hsl(165, 70%, 50%)' },
-  { category: 'RH', value: 25000, color: 'hsl(280, 70%, 60%)' },
-  { category: 'Tecnologia', value: 12000, color: 'hsl(40, 90%, 55%)' },
-];
-
-interface KPICardProps {
+interface DashboardWidget {
+  id: string;
+  widget_type: string;
   title: string;
-  value: string;
-  change: number;
-  icon: React.ComponentType<{ className?: string }>;
-  trend: 'up' | 'down';
-}
-
-function KPICard({ title, value, change, icon: Icon, trend }: KPICardProps) {
-  return (
-    <Card className="kpi-card">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground mb-1">{title}</p>
-          <p className="text-2xl font-bold text-foreground">{value}</p>
-          <div className={`flex items-center gap-1 mt-2 text-sm ${trend === 'up' ? 'text-success' : 'text-destructive'}`}>
-            {trend === 'up' ? (
-              <ArrowUpRight className="h-4 w-4" />
-            ) : (
-              <ArrowDownRight className="h-4 w-4" />
-            )}
-            <span>{Math.abs(change)}% vs mês anterior</span>
-          </div>
-        </div>
-        <div className={`p-3 rounded-xl ${trend === 'up' ? 'bg-success/10' : 'bg-destructive/10'}`}>
-          <Icon className={`h-6 w-6 ${trend === 'up' ? 'text-success' : 'text-destructive'}`} />
-        </div>
-      </div>
-    </Card>
-  );
+  config: Json;
+  data_source_id: string | null;
+  project_id: string;
 }
 
 export default function Dashboard() {
   const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchProjects() {
-      if (!user) return;
-      
-      const { data, error } = await supabase
+  const fetchData = useCallback(async () => {
+    if (!user) return;
+    
+    const [projectsRes, widgetsRes] = await Promise.all([
+      supabase
         .from('projects')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(5);
-      
-      if (!error && data) {
-        setProjects(data);
-      }
-      setLoading(false);
-    }
-
-    fetchProjects();
+        .limit(5),
+      supabase
+        .from('dashboard_widgets')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true }),
+    ]);
+    
+    if (projectsRes.data) setProjects(projectsRes.data);
+    if (widgetsRes.data) setWidgets(widgetsRes.data);
+    setLoading(false);
   }, [user]);
 
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const handleDeleteWidget = async (widgetId: string) => {
+    const { error } = await supabase
+      .from('dashboard_widgets')
+      .delete()
+      .eq('id', widgetId);
+
+    if (error) {
+      toast.error('Erro ao remover widget');
+      return;
+    }
+
+    setWidgets((prev) => prev.filter((w) => w.id !== widgetId));
+    toast.success('Widget removido');
+  };
+
   const firstName = user?.user_metadata?.full_name?.split(' ')[0] || 'Usuário';
+
+  const kpiWidgets = widgets.filter((w) => w.widget_type === 'kpi');
+  const chartWidgets = widgets.filter((w) => w.widget_type === 'chart');
 
   return (
     <AppLayout>
@@ -114,16 +99,13 @@ export default function Dashboard() {
               Olá, {firstName}! 👋
             </h1>
             <p className="text-muted-foreground mt-1">
-              Aqui está um resumo dos seus indicadores financeiros.
+              {widgets.length > 0 
+                ? 'Aqui está seu dashboard personalizado com dados reais.'
+                : 'Configure seu dashboard adicionando widgets personalizados.'}
             </p>
           </div>
           <div className="flex gap-3">
-            <Button variant="outline" asChild>
-              <Link to="/upload">
-                <Upload className="h-4 w-4 mr-2" />
-                Upload de Dados
-              </Link>
-            </Button>
+            <DashboardBuilder onWidgetCreated={fetchData} />
             <Button className="btn-gradient" asChild>
               <Link to="/projects">
                 <Plus className="h-4 w-4 mr-2" />
@@ -133,140 +115,75 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <KPICard
-            title="Receita Total"
-            value="R$ 328.500"
-            change={12.5}
-            icon={DollarSign}
-            trend="up"
-          />
-          <KPICard
-            title="Margem de Lucro"
-            value="24.8%"
-            change={3.2}
-            icon={TrendingUp}
-            trend="up"
-          />
-          <KPICard
-            title="Custos Operacionais"
-            value="R$ 87.200"
-            change={-5.1}
-            icon={TrendingDown}
-            trend="down"
-          />
-          <KPICard
-            title="ROI"
-            value="18.3%"
-            change={2.8}
-            icon={BarChart3}
-            trend="up"
-          />
-        </div>
-
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Revenue Chart */}
-          <Card className="chart-container">
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg font-semibold">Evolução de Receita</CardTitle>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Sparkles className="h-3 w-3 text-accent" />
-                  <span>Análise IA disponível</span>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={revenueData}>
-                    <defs>
-                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="hsl(210, 100%, 60%)" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="hsl(210, 100%, 60%)" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(220, 20%, 16%)" />
-                    <XAxis 
-                      dataKey="month" 
-                      stroke="hsl(220, 15%, 60%)" 
-                      fontSize={12}
-                    />
-                    <YAxis 
-                      stroke="hsl(220, 15%, 60%)" 
-                      fontSize={12}
-                      tickFormatter={(value) => `${value / 1000}k`}
-                    />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: 'hsl(220, 25%, 9%)',
-                        border: '1px solid hsl(220, 20%, 16%)',
-                        borderRadius: '8px',
-                      }}
-                      formatter={(value: number) => [`R$ ${value.toLocaleString()}`, 'Receita']}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="value" 
-                      stroke="hsl(210, 100%, 60%)" 
-                      strokeWidth={2}
-                      fill="url(#colorRevenue)" 
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Expenses Chart */}
-          <Card className="chart-container">
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg font-semibold">Despesas por Categoria</CardTitle>
-                <Button variant="ghost" size="sm" className="text-xs">
-                  Ver detalhes
+        {/* Dynamic KPI Cards */}
+        {kpiWidgets.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {kpiWidgets.map((widget) => (
+              <div key={widget.id} className="relative group">
+                <DynamicKPI
+                  title={widget.title}
+                  dataSourceId={widget.data_source_id!}
+                  config={widget.config as Record<string, unknown>}
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6"
+                  onClick={() => handleDeleteWidget(widget.id)}
+                >
+                  <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={expenseData} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(220, 20%, 16%)" />
-                    <XAxis 
-                      type="number" 
-                      stroke="hsl(220, 15%, 60%)" 
-                      fontSize={12}
-                      tickFormatter={(value) => `${value / 1000}k`}
-                    />
-                    <YAxis 
-                      type="category" 
-                      dataKey="category" 
-                      stroke="hsl(220, 15%, 60%)" 
-                      fontSize={12}
-                      width={80}
-                    />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: 'hsl(220, 25%, 9%)',
-                        border: '1px solid hsl(220, 20%, 16%)',
-                        borderRadius: '8px',
-                      }}
-                      formatter={(value: number) => [`R$ ${value.toLocaleString()}`, 'Despesa']}
-                    />
-                    <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                      {expenseData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+            ))}
+          </div>
+        )}
+
+        {/* Dynamic Charts */}
+        {chartWidgets.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {chartWidgets.map((widget) => (
+              <div key={widget.id} className="relative group">
+                <DynamicChart
+                  title={widget.title}
+                  dataSourceId={widget.data_source_id!}
+                  config={widget.config as { chartType: "bar" | "line" | "area" | "pie"; groupBy?: string; yField?: string; aggregation?: "sum" | "count" | "avg" }}
+                  className="chart-container"
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6"
+                  onClick={() => handleDeleteWidget(widget.id)}
+                >
+                  <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Empty state for widgets */}
+        {widgets.length === 0 && !loading && (
+          <Card className="glass-card">
+            <CardContent className="py-12 text-center">
+              <LayoutDashboard className="h-16 w-16 text-muted-foreground/50 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold mb-2">Seu Dashboard está vazio</h3>
+              <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                Adicione widgets personalizados para visualizar seus dados em tempo real. 
+                Conecte suas fontes de dados e crie KPIs e gráficos.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <DashboardBuilder onWidgetCreated={fetchData} />
+                <Button variant="outline" asChild>
+                  <Link to="/analyses">
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Usar IA para sugestões
+                  </Link>
+                </Button>
               </div>
             </CardContent>
           </Card>
-        </div>
+        )}
 
         {/* Quick Actions & Recent Projects */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

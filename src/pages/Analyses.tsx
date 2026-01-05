@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 import { 
   Brain, 
   Loader2, 
@@ -16,7 +17,8 @@ import {
   Eye,
   Code2,
   Play,
-  RefreshCw
+  RefreshCw,
+  LayoutDashboard
 } from "lucide-react";
 
 interface ConnectionConfig {
@@ -63,6 +65,7 @@ interface AnalysisResult {
 
 export default function Analyses() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [selectedProject, setSelectedProject] = useState<string>("");
@@ -72,6 +75,7 @@ export default function Analyses() {
   const [loading, setLoading] = useState(false);
   const [fetchingData, setFetchingData] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [addingToDashboard, setAddingToDashboard] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -245,11 +249,82 @@ export default function Analyses() {
         generated_queries: analysis.queries || [],
       });
     } catch (error) {
-      console.error(error);
-      toast.error("Erro ao executar análise");
+      console.error("Analysis error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+      toast.error(`Erro ao executar análise: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
+  };
+
+  const addToDashboard = async () => {
+    if (!result || !selectedProject || !selectedDataSource) return;
+
+    setAddingToDashboard(true);
+
+    try {
+      const dataSource = dataSources.find((d) => d.id === selectedDataSource);
+      const widgetsToCreate = [];
+
+      // Create KPI widgets from analysis
+      if (result.kpis && result.kpis.length > 0) {
+        for (const kpi of result.kpis.slice(0, 4)) {
+          widgetsToCreate.push({
+            user_id: user!.id,
+            project_id: selectedProject,
+            data_source_id: selectedDataSource,
+            widget_type: "kpi",
+            title: kpi.name,
+            config: {
+              field: kpi.formula.includes("SUM") ? extractFieldFromFormula(kpi.formula) : undefined,
+              aggregation: kpi.formula.includes("COUNT") ? "count" : kpi.formula.includes("AVG") ? "avg" : "sum",
+              format: kpi.name.toLowerCase().includes("valor") || kpi.name.toLowerCase().includes("receita") ? "currency" : "number",
+            },
+          });
+        }
+      }
+
+      // Create chart widgets from analysis
+      if (result.charts && result.charts.length > 0) {
+        for (const chart of result.charts.slice(0, 2)) {
+          widgetsToCreate.push({
+            user_id: user!.id,
+            project_id: selectedProject,
+            data_source_id: selectedDataSource,
+            widget_type: "chart",
+            title: chart.title,
+            config: {
+              chartType: chart.type.toLowerCase() as "bar" | "line" | "area" | "pie",
+              groupBy: chart.dataFields[0] || undefined,
+              yField: chart.dataFields[1] || undefined,
+              aggregation: "count",
+            },
+          });
+        }
+      }
+
+      if (widgetsToCreate.length === 0) {
+        toast.info("Nenhum widget para adicionar. Execute uma análise primeiro.");
+        return;
+      }
+
+      const { error } = await supabase.from("dashboard_widgets").insert(widgetsToCreate);
+
+      if (error) throw error;
+
+      toast.success(`${widgetsToCreate.length} widgets adicionados ao Dashboard!`);
+      navigate("/");
+    } catch (error) {
+      console.error("Error adding to dashboard:", error);
+      toast.error("Erro ao adicionar widgets ao dashboard");
+    } finally {
+      setAddingToDashboard(false);
+    }
+  };
+
+  const extractFieldFromFormula = (formula: string): string | undefined => {
+    const match = formula.match(/\(([^)]+)\)/);
+    return match ? match[1].trim() : undefined;
   };
 
   const getSelectedDataSource = () => dataSources.find((d) => d.id === selectedDataSource);
@@ -393,7 +468,26 @@ export default function Analyses() {
 
         {result && !loading && (
           <div className="glass-card rounded-xl p-6">
-            <h3 className="font-semibold mb-6">Resultados da Análise</h3>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-semibold">Resultados da Análise</h3>
+              <Button
+                onClick={addToDashboard}
+                disabled={addingToDashboard}
+                className="btn-gradient"
+              >
+                {addingToDashboard ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Adicionando...
+                  </>
+                ) : (
+                  <>
+                    <LayoutDashboard className="h-4 w-4 mr-2" />
+                    Adicionar ao Dashboard
+                  </>
+                )}
+              </Button>
+            </div>
             <AnalysisResults
               kpis={result.kpis}
               charts={result.charts}
