@@ -77,6 +77,70 @@ export type Database = {
           },
         ]
       }
+      dashboard_widgets: {
+        Row: {
+          analysis_id: string | null
+          config: Json | null
+          created_at: string
+          data_source_id: string | null
+          id: string
+          position: Json | null
+          project_id: string
+          title: string
+          updated_at: string
+          user_id: string
+          widget_type: string
+        }
+        Insert: {
+          analysis_id?: string | null
+          config?: Json | null
+          created_at?: string
+          data_source_id?: string | null
+          id?: string
+          position?: Json | null
+          project_id: string
+          title: string
+          updated_at?: string
+          user_id: string
+          widget_type: string
+        }
+        Update: {
+          analysis_id?: string | null
+          config?: Json | null
+          created_at?: string
+          data_source_id?: string | null
+          id?: string
+          position?: Json | null
+          project_id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+          widget_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dashboard_widgets_analysis_id_fkey"
+            columns: ["analysis_id"]
+            isOneToOne: false
+            referencedRelation: "analyses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dashboard_widgets_data_source_id_fkey"
+            columns: ["data_source_id"]
+            isOneToOne: false
+            referencedRelation: "data_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dashboard_widgets_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       data_sources: {
         Row: {
           connection_config: Json | null
