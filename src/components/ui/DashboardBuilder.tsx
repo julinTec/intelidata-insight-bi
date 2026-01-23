@@ -20,7 +20,7 @@ import {
   DialogTrigger,
 } from "./dialog";
 import { toast } from "sonner";
-import { Plus, BarChart3, Hash, Loader2, FolderKanban, Upload, AlertCircle } from "lucide-react";
+import { Plus, BarChart3, Hash, Loader2, FolderKanban, Upload, AlertCircle, Database, Link2, FileSpreadsheet } from "lucide-react";
 import type { Json } from "@/integrations/supabase/types";
 
 interface Project {
@@ -209,6 +209,21 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
     return null;
   };
 
+  const getSourceIcon = (type: string) => {
+    switch (type) {
+      case "csv":
+      case "excel":
+        return <FileSpreadsheet className="h-4 w-4" />;
+      case "api_json":
+        return <Link2 className="h-4 w-4" />;
+      case "postgresql":
+      case "mysql":
+        return <Database className="h-4 w-4" />;
+      default:
+        return <FileSpreadsheet className="h-4 w-4" />;
+    }
+  };
+
   const renderNoDataSourcesMessage = () => {
     if (!selectedProject) return null;
     
@@ -223,17 +238,25 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
 
     if (dataSources.length === 0) {
       return (
-        <div className="flex flex-col items-center gap-2 p-4 rounded-lg bg-warning/10 border border-warning/20">
+        <div className="flex flex-col items-center gap-3 p-4 rounded-lg bg-warning/10 border border-warning/20">
           <AlertCircle className="h-5 w-5 text-warning" />
           <p className="text-sm text-center">
             Este projeto não tem fontes de dados.
           </p>
-          <Button asChild variant="outline" size="sm" onClick={() => setOpen(false)}>
-            <Link to={`/upload?project=${selectedProject}`}>
-              <Upload className="h-4 w-4 mr-2" />
-              Adicionar Dados
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button asChild variant="outline" size="sm" onClick={() => setOpen(false)}>
+              <Link to={`/upload?project=${selectedProject}`}>
+                <Upload className="h-4 w-4 mr-2" />
+                CSV/Excel
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm" onClick={() => setOpen(false)}>
+              <Link to="/connections">
+                <Database className="h-4 w-4 mr-2" />
+                BD/API
+              </Link>
+            </Button>
+          </div>
         </div>
       );
     }
@@ -288,7 +311,11 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
                     <SelectContent>
                       {dataSources.map((ds) => (
                         <SelectItem key={ds.id} value={ds.id}>
-                          {ds.name} ({ds.source_type})
+                          <div className="flex items-center gap-2">
+                            {getSourceIcon(ds.source_type)}
+                            <span>{ds.name}</span>
+                            <span className="text-xs text-muted-foreground">({ds.source_type})</span>
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,8 @@ import {
   Lock,
   Globe,
   Link2,
-  FileJson
+  FileJson,
+  FolderKanban
 } from "lucide-react";
 
 type ConnectionType = "postgresql" | "mysql" | "api_json";
@@ -34,15 +35,24 @@ interface Connection {
   connectionUrl?: string;
   dataPath?: string;
   status: "connected" | "error" | "pending";
+  projectId?: string;
+  projectName?: string;
 }
 
 interface ExtractedSchema {
   columns: Array<{ name: string; type: string }>;
 }
 
+interface Project {
+  id: string;
+  name: string;
+}
+
 export default function Connections() {
   const { user } = useAuth();
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loadingConnections, setLoadingConnections] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -54,6 +64,7 @@ export default function Connections() {
   const [formData, setFormData] = useState({
     name: "",
     type: "api_json" as ConnectionType,
+    projectId: "",
     // DB fields
     host: "",
     port: 5432,
@@ -64,6 +75,60 @@ export default function Connections() {
     connectionUrl: "",
     dataPath: "",
   });
+
+  // Load saved connections and projects on mount
+  useEffect(() => {
+    if (user) {
+      loadSavedConnections();
+      loadProjects();
+    }
+  }, [user]);
+
+  const loadProjects = async () => {
+    const { data } = await supabase
+      .from("projects")
+      .select("id, name")
+      .eq("user_id", user!.id)
+      .order("created_at", { ascending: false });
+    setProjects(data || []);
+  };
+
+  const loadSavedConnections = async () => {
+    setLoadingConnections(true);
+    const { data } = await supabase
+      .from("data_sources")
+      .select(`
+        id, 
+        name, 
+        source_type, 
+        connection_config,
+        project_id,
+        projects!inner(name)
+      `)
+      .eq("user_id", user!.id)
+      .in("source_type", ["postgresql", "mysql", "api_json"]);
+
+    if (data) {
+      const loadedConnections: Connection[] = data.map((ds) => {
+        const config = ds.connection_config as Record<string, unknown> | null;
+        return {
+          id: ds.id,
+          name: ds.name,
+          type: ds.source_type as ConnectionType,
+          host: config?.host as string | undefined,
+          port: config?.port as number | undefined,
+          database: config?.database as string | undefined,
+          connectionUrl: config?.url as string | undefined,
+          dataPath: config?.dataPath as string | undefined,
+          status: "connected" as const,
+          projectId: ds.project_id,
+          projectName: (ds.projects as { name: string })?.name,
+        };
+      });
+      setConnections(loadedConnections);
+    }
+    setLoadingConnections(false);
+  };
 
   // Find all arrays in a nested JSON object
   const findArrayPaths = (obj: unknown, path = ""): { path: string; length: number }[] => {
@@ -238,6 +303,11 @@ export default function Connections() {
       return;
     }
 
+    if (!formData.projectId) {
+      toast.error("Selecione um projeto");
+      return;
+    }
+
     if (formData.type === "api_json") {
       if (!formData.connectionUrl) {
         toast.error("Preencha a URL do endpoint");
@@ -251,20 +321,6 @@ export default function Connections() {
       setSaving(true);
 
       try {
-        // Get first project for the user
-        const { data: project } = await supabase
-          .from("projects")
-          .select("id")
-          .eq("user_id", user!.id)
-          .limit(1)
-          .single();
-
-        if (!project) {
-          toast.error("Crie um projeto antes de adicionar conexões");
-          setSaving(false);
-          return;
-        }
-
         // Calculate row count from sample data
         const response = await fetch(formData.connectionUrl);
         const jsonData = await response.json();
@@ -278,7 +334,7 @@ export default function Connections() {
         
         const { data: insertedData, error } = await supabase.from("data_sources").insert([{
           user_id: user!.id,
-          project_id: project.id,
+          project_id: formData.projectId,
           name: formData.name,
           source_type: "api_json",
           connection_config: {
@@ -291,6 +347,9 @@ export default function Connections() {
 
         if (error) throw error;
 
+        // Get project name for display
+        const project = projects.find(p => p.id === formData.projectId);
+
         // Add to local connections list
         const newConnection: Connection = {
           id: insertedData?.[0]?.id || Date.now().toString(),
@@ -299,6 +358,8 @@ export default function Connections() {
           connectionUrl: formData.connectionUrl,
           dataPath: formData.dataPath,
           status: "connected",
+          projectId: formData.projectId,
+          projectName: project?.name,
         };
 
         setConnections([...connections, newConnection]);
@@ -311,25 +372,56 @@ export default function Connections() {
 
       setSaving(false);
     } else {
-      // DB connection (local only for now)
+      // DB connection - also save to Supabase
       if (!formData.host || !formData.database) {
         toast.error("Preencha todos os campos obrigatórios");
         return;
       }
 
-      const newConnection: Connection = {
-        id: Date.now().toString(),
-        name: formData.name,
-        type: formData.type,
-        host: formData.host,
-        port: formData.port,
-        database: formData.database,
-        status: testResult === "success" ? "connected" : "pending",
-      };
+      setSaving(true);
 
-      setConnections([...connections, newConnection]);
-      resetForm();
-      toast.success("Conexão salva!");
+      try {
+        const { data: insertedData, error } = await supabase.from("data_sources").insert([{
+          user_id: user!.id,
+          project_id: formData.projectId,
+          name: formData.name,
+          source_type: formData.type,
+          connection_config: {
+            host: formData.host,
+            port: formData.port,
+            database: formData.database,
+            username: formData.username,
+            // Note: password should use vault/secrets in production
+          },
+          schema_info: null,
+          row_count: null,
+        }]).select();
+
+        if (error) throw error;
+
+        const project = projects.find(p => p.id === formData.projectId);
+
+        const newConnection: Connection = {
+          id: insertedData?.[0]?.id || Date.now().toString(),
+          name: formData.name,
+          type: formData.type,
+          host: formData.host,
+          port: formData.port,
+          database: formData.database,
+          status: testResult === "success" ? "connected" : "pending",
+          projectId: formData.projectId,
+          projectName: project?.name,
+        };
+
+        setConnections([...connections, newConnection]);
+        resetForm();
+        toast.success("Conexão de BD salva como fonte de dados!");
+      } catch (error) {
+        console.error(error);
+        toast.error("Erro ao salvar conexão");
+      }
+
+      setSaving(false);
     }
   };
 
@@ -338,6 +430,7 @@ export default function Connections() {
     setFormData({
       name: "",
       type: "api_json",
+      projectId: "",
       host: "",
       port: 5432,
       database: "",
@@ -387,6 +480,22 @@ export default function Connections() {
           <div className="glass-card rounded-xl p-6">
             <h3 className="font-semibold mb-6">Nova Conexão</h3>
 
+            {projects.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <FolderKanban className="h-12 w-12 text-muted-foreground mb-3" />
+                <h4 className="font-medium mb-1">Nenhum projeto encontrado</h4>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Crie um projeto primeiro para adicionar conexões
+                </p>
+                <Button asChild variant="outline" onClick={() => setShowForm(false)}>
+                  <a href="/projects">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Criar Projeto
+                  </a>
+                </Button>
+              </div>
+            ) : (
+            <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label htmlFor="name">Nome da Conexão</Label>
@@ -397,6 +506,28 @@ export default function Connections() {
                   placeholder="Ex: API Produção"
                   className="input-dark"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Projeto</Label>
+                <Select
+                  value={formData.projectId}
+                  onValueChange={(value) => setFormData({ ...formData, projectId: value })}
+                >
+                  <SelectTrigger className="input-dark">
+                    <SelectValue placeholder="Selecione um projeto" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        <div className="flex items-center gap-2">
+                          <FolderKanban className="h-4 w-4" />
+                          {p.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
@@ -650,6 +781,8 @@ export default function Connections() {
                 )}
               </Button>
             </div>
+            </>
+            )}
           </div>
         )}
 
