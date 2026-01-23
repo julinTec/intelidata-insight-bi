@@ -14,10 +14,13 @@ import {
   FolderKanban,
   TrendingUp,
   ChevronDown,
+  Shield,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
+import { useRole } from '@/hooks/useRole';
 import { supabase } from '@/integrations/supabase/client';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
@@ -58,6 +61,7 @@ export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { isAdmin } = useRole();
 
   useEffect(() => {
     if (user) {
@@ -184,6 +188,25 @@ export function AppSidebar() {
             </div>
           </div>
         )}
+
+        {/* Admin Link - Only visible for admins */}
+        {isAdmin && (
+          <div className="pt-2">
+            <Link
+              to="/admin"
+              className={cn(
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200',
+                location.pathname === '/admin'
+                  ? 'bg-primary/10 text-primary border-l-2 border-primary'
+                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                collapsed && 'justify-center px-0'
+              )}
+            >
+              <Shield className="h-5 w-5 flex-shrink-0" />
+              {!collapsed && <span className="font-medium">Admin</span>}
+            </Link>
+          </div>
+        )}
       </nav>
 
       {/* Bottom Section */}
@@ -219,9 +242,16 @@ export function AppSidebar() {
           </Avatar>
           {!collapsed && (
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate text-foreground">
-                {user?.user_metadata?.full_name || 'Usuário'}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium truncate text-foreground">
+                  {user?.user_metadata?.full_name || 'Usuário'}
+                </p>
+                {isAdmin && (
+                  <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4">
+                    Admin
+                  </Badge>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
             </div>
           )}

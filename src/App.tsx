@@ -15,6 +15,7 @@ import Analyses from "./pages/Analyses";
 import Templates from "./pages/Templates";
 import Connections from "./pages/Connections";
 import Settings from "./pages/Settings";
+import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -39,6 +40,7 @@ const App = () => (
             <Route path="/templates" element={<Templates />} />
             <Route path="/connections" element={<Connections />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/admin" element={<Admin />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
