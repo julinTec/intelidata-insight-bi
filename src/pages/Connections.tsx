@@ -74,6 +74,14 @@ export default function Connections() {
     // API JSON fields
     connectionUrl: "",
     dataPath: "",
+    // Pagination settings
+    paginationType: "none" as "none" | "offset" | "page" | "url_param",
+    limitParam: "limit",
+    offsetParam: "offset",
+    pageParam: "page",
+    recordsPerPage: 1000,
+    maxRecords: 0, // 0 = unlimited
+    customUrlParams: "", // For manual URL params like "limit=50000"
   });
 
   // Load saved connections and projects on mount
@@ -332,6 +340,17 @@ export default function Connections() {
           ? { columns: extractedSchema.columns.map(c => ({ name: c.name, type: c.type })) }
           : null;
         
+        // Build pagination config
+        const paginationConfig = formData.paginationType !== "none" ? {
+          type: formData.paginationType,
+          limitParam: formData.limitParam,
+          offsetParam: formData.offsetParam,
+          pageParam: formData.pageParam,
+          recordsPerPage: formData.recordsPerPage,
+          maxRecords: formData.maxRecords,
+          customUrlParams: formData.customUrlParams,
+        } : undefined;
+
         const { data: insertedData, error } = await supabase.from("data_sources").insert([{
           user_id: user!.id,
           project_id: formData.projectId,
@@ -340,6 +359,7 @@ export default function Connections() {
           connection_config: {
             url: formData.connectionUrl,
             dataPath: formData.dataPath || null,
+            pagination: paginationConfig,
           },
           schema_info: schemaInfoForDb,
           row_count: records.length,
@@ -438,6 +458,13 @@ export default function Connections() {
       password: "",
       connectionUrl: "",
       dataPath: "",
+      paginationType: "none",
+      limitParam: "limit",
+      offsetParam: "offset",
+      pageParam: "page",
+      recordsPerPage: 1000,
+      maxRecords: 0,
+      customUrlParams: "",
     });
     setTestResult(null);
     setSampleData(null);
@@ -603,6 +630,117 @@ export default function Connections() {
                     <p className="text-xs text-muted-foreground">
                       Deixe vazio para auto-detectar. Se houver múltiplos arrays, você poderá escolher.
                     </p>
+                  </div>
+
+                  {/* Pagination Settings */}
+                  <div className="md:col-span-2 p-4 rounded-lg bg-muted/50 border border-border/50">
+                    <div className="flex items-center justify-between mb-4">
+                      <Label className="text-sm font-medium">Configuração de Paginação</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Configure se a API limita o número de registros por requisição
+                      </p>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="paginationType" className="text-xs">Tipo de Paginação</Label>
+                        <Select
+                          value={formData.paginationType}
+                          onValueChange={(value: "none" | "offset" | "page" | "url_param") => 
+                            setFormData({ ...formData, paginationType: value })
+                          }
+                        >
+                          <SelectTrigger className="input-dark">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Nenhuma (padrão)</SelectItem>
+                            <SelectItem value="url_param">Parâmetro manual na URL</SelectItem>
+                            <SelectItem value="offset">Offset automático</SelectItem>
+                            <SelectItem value="page">Página automática</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {formData.paginationType === "url_param" && (
+                        <div className="space-y-2">
+                          <Label htmlFor="customUrlParams" className="text-xs">Parâmetros extras</Label>
+                          <Input
+                            id="customUrlParams"
+                            value={formData.customUrlParams}
+                            onChange={(e) => setFormData({ ...formData, customUrlParams: e.target.value })}
+                            placeholder="Ex: limit=50000 ou per_page=20000"
+                            className="input-dark"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Será adicionado à URL: ?{formData.customUrlParams || "..."}
+                          </p>
+                        </div>
+                      )}
+
+                      {(formData.paginationType === "offset" || formData.paginationType === "page") && (
+                        <>
+                          <div className="space-y-2">
+                            <Label htmlFor="recordsPerPage" className="text-xs">Registros por página</Label>
+                            <Input
+                              id="recordsPerPage"
+                              type="number"
+                              value={formData.recordsPerPage}
+                              onChange={(e) => setFormData({ ...formData, recordsPerPage: parseInt(e.target.value) || 1000 })}
+                              className="input-dark"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="limitParam" className="text-xs">Nome do parâmetro limit</Label>
+                            <Input
+                              id="limitParam"
+                              value={formData.limitParam}
+                              onChange={(e) => setFormData({ ...formData, limitParam: e.target.value })}
+                              placeholder="limit"
+                              className="input-dark"
+                            />
+                          </div>
+
+                          {formData.paginationType === "offset" && (
+                            <div className="space-y-2">
+                              <Label htmlFor="offsetParam" className="text-xs">Nome do parâmetro offset</Label>
+                              <Input
+                                id="offsetParam"
+                                value={formData.offsetParam}
+                                onChange={(e) => setFormData({ ...formData, offsetParam: e.target.value })}
+                                placeholder="offset"
+                                className="input-dark"
+                              />
+                            </div>
+                          )}
+
+                          {formData.paginationType === "page" && (
+                            <div className="space-y-2">
+                              <Label htmlFor="pageParam" className="text-xs">Nome do parâmetro page</Label>
+                              <Input
+                                id="pageParam"
+                                value={formData.pageParam}
+                                onChange={(e) => setFormData({ ...formData, pageParam: e.target.value })}
+                                placeholder="page"
+                                className="input-dark"
+                              />
+                            </div>
+                          )}
+
+                          <div className="space-y-2">
+                            <Label htmlFor="maxRecords" className="text-xs">Limite máximo de registros (0 = sem limite)</Label>
+                            <Input
+                              id="maxRecords"
+                              type="number"
+                              value={formData.maxRecords}
+                              onChange={(e) => setFormData({ ...formData, maxRecords: parseInt(e.target.value) || 0 })}
+                              className="input-dark"
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   {/* Detected Paths Selector */}
