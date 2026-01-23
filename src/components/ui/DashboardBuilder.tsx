@@ -332,13 +332,13 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
                   <>
                     <div className="space-y-2">
                       <Label>Campo (opcional)</Label>
-                      <Select value={kpiField} onValueChange={setKpiField}>
+                      <Select value={kpiField || "__none__"} onValueChange={(v) => setKpiField(v === "__none__" ? "" : v)}>
                         <SelectTrigger>
                           <SelectValue placeholder="Contar registros" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Contar registros</SelectItem>
-                          {fields.map((f) => (
+                          <SelectItem value="__none__">Contar registros</SelectItem>
+                          {fields.filter(f => f).map((f) => (
                             <SelectItem key={f} value={f}>
                               {f}
                             </SelectItem>
@@ -403,7 +403,7 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
                           <SelectValue placeholder="Selecione um campo" />
                         </SelectTrigger>
                         <SelectContent>
-                          {fields.map((f) => (
+                          {fields.filter(f => f).map((f) => (
                             <SelectItem key={f} value={f}>
                               {f}
                             </SelectItem>
@@ -414,13 +414,13 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
 
                     <div className="space-y-2">
                       <Label>Campo de Valor (opcional)</Label>
-                      <Select value={valueField} onValueChange={setValueField}>
+                      <Select value={valueField || "__none__"} onValueChange={(v) => setValueField(v === "__none__" ? "" : v)}>
                         <SelectTrigger>
                           <SelectValue placeholder="Contar registros" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Contar registros</SelectItem>
-                          {fields.map((f) => (
+                          <SelectItem value="__none__">Contar registros</SelectItem>
+                          {fields.filter(f => f).map((f) => (
                             <SelectItem key={f} value={f}>
                               {f}
                             </SelectItem>
