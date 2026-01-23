@@ -4,6 +4,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { DynamicKPI } from "@/components/ui/DynamicKPI";
 import { DynamicChart } from "@/components/ui/DynamicChart";
+import { DynamicTable } from "@/components/ui/DynamicTable";
 import { DashboardBuilder } from "@/components/ui/DashboardBuilder";
 import { DashboardFilters } from "@/components/ui/DashboardFilters";
 import { ShareDashboard } from "@/components/ui/ShareDashboard";
@@ -20,6 +21,7 @@ import {
   BarChart3,
   Upload,
   Share2,
+  Table as TableIcon,
   ChevronRight,
   Home,
   FolderKanban,
@@ -133,6 +135,7 @@ export default function ProjectDashboard() {
   // Separate widgets by type
   const kpiWidgets = widgets.filter((w) => w.widget_type === "kpi");
   const chartWidgets = widgets.filter((w) => w.widget_type === "chart");
+  const tableWidgets = widgets.filter((w) => w.widget_type === "table");
 
   // Get schema from first data source
   const schemaInfo = dataSources[0]?.schema_info as { columns?: Array<{ name: string; type: string }> } | null;
@@ -313,6 +316,36 @@ export default function ProjectDashboard() {
                         title={widget.title}
                         dataSourceId={widget.data_source_id || ""}
                         config={widget.config as Record<string, unknown>}
+                        filters={filters}
+                      />
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => handleDeleteWidget(widget.id)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Tables */}
+            {tableWidgets.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <TableIcon className="h-5 w-5 text-primary" />
+                  <h2 className="text-lg font-semibold">Tabelas de Dados</h2>
+                </div>
+                <div className="space-y-6">
+                  {tableWidgets.map((widget) => (
+                    <div key={widget.id} className="relative group">
+                      <DynamicTable
+                        title={widget.title}
+                        dataSourceId={widget.data_source_id || ""}
+                        config={widget.config as { columns?: string[]; pageSize?: number }}
                         filters={filters}
                       />
                       <Button

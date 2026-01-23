@@ -20,7 +20,8 @@ import {
   DialogTrigger,
 } from "./dialog";
 import { toast } from "sonner";
-import { Plus, BarChart3, Hash, Loader2, FolderKanban, Upload, AlertCircle, Database, Link2, FileSpreadsheet } from "lucide-react";
+import { Plus, BarChart3, Hash, Loader2, FolderKanban, Upload, AlertCircle, Database, Link2, FileSpreadsheet, Table as TableIcon } from "lucide-react";
+import { Checkbox } from "./checkbox";
 import type { Json } from "@/integrations/supabase/types";
 
 interface Project {
@@ -50,7 +51,7 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
   const [loadingSources, setLoadingSources] = useState(false);
   
   const [selectedDataSource, setSelectedDataSource] = useState("");
-  const [widgetType, setWidgetType] = useState<"kpi" | "chart">("kpi");
+  const [widgetType, setWidgetType] = useState<"kpi" | "chart" | "table">("kpi");
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -63,6 +64,10 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
   const [chartType, setChartType] = useState<"bar" | "line" | "area" | "pie">("bar");
   const [groupByField, setGroupByField] = useState("");
   const [valueField, setValueField] = useState("");
+
+  // Table config
+  const [tableColumns, setTableColumns] = useState<string[]>([]);
+  const [tablePageSize, setTablePageSize] = useState(10);
 
   useEffect(() => {
     if (user && open) {
@@ -124,28 +129,37 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
     setLoading(true);
 
     try {
-      const config =
-        widgetType === "kpi"
-          ? {
-              field: kpiField || undefined,
-              aggregation: kpiAggregation,
-              format: kpiFormat,
-            }
-          : {
-              chartType,
-              groupBy: groupByField || undefined,
-              yField: valueField || undefined,
-              aggregation: kpiAggregation,
-            };
+      let config: Record<string, unknown>;
+      
+      if (widgetType === "kpi") {
+        config = {
+          field: kpiField || undefined,
+          aggregation: kpiAggregation,
+          format: kpiFormat,
+        };
+      } else if (widgetType === "chart") {
+        config = {
+          chartType,
+          groupBy: groupByField || undefined,
+          yField: valueField || undefined,
+          aggregation: kpiAggregation,
+        };
+      } else {
+        // table
+        config = {
+          columns: tableColumns.length > 0 ? tableColumns : undefined,
+          pageSize: tablePageSize,
+        };
+      }
 
-      const { error } = await supabase.from("dashboard_widgets").insert({
+      const { error } = await supabase.from("dashboard_widgets").insert([{
         user_id: user!.id,
         project_id: selectedProject,
         data_source_id: selectedDataSource,
         widget_type: widgetType,
         title,
-        config,
-      });
+        config: config as Json,
+      }]);
 
       if (error) throw error;
 
@@ -169,6 +183,8 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
     setChartType("bar");
     setGroupByField("");
     setValueField("");
+    setTableColumns([]);
+    setTablePageSize(10);
     if (!initialProjectId) {
       setSelectedProject("");
       setSelectedDataSource("");
@@ -343,6 +359,15 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
                       <BarChart3 className="h-4 w-4 mr-2" />
                       Gráfico
                     </Button>
+                    <Button
+                      type="button"
+                      variant={widgetType === "table" ? "default" : "outline"}
+                      onClick={() => setWidgetType("table")}
+                      className="flex-1"
+                    >
+                      <TableIcon className="h-4 w-4 mr-2" />
+                      Tabela
+                    </Button>
                   </div>
                 </div>
 
@@ -452,6 +477,62 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
                               {f}
                             </SelectItem>
                           ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
+
+                {widgetType === "table" && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Colunas a exibir</Label>
+                      <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-3 border rounded-md bg-muted/20">
+                        {fields.length > 0 ? (
+                          fields.map((field) => (
+                            <label
+                              key={field}
+                              className="flex items-center gap-2 cursor-pointer text-sm hover:bg-muted/50 p-1 rounded"
+                            >
+                              <Checkbox
+                                checked={tableColumns.includes(field)}
+                                onCheckedChange={(checked) => {
+                                  if (checked) {
+                                    setTableColumns([...tableColumns, field]);
+                                  } else {
+                                    setTableColumns(tableColumns.filter((c) => c !== field));
+                                  }
+                                }}
+                              />
+                              <span className="truncate">{field}</span>
+                            </label>
+                          ))
+                        ) : (
+                          <p className="col-span-2 text-sm text-muted-foreground text-center py-2">
+                            Selecione uma fonte de dados
+                          </p>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Deixe vazio para exibir todas as colunas
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Registros por página</Label>
+                      <Select
+                        value={String(tablePageSize)}
+                        onValueChange={(v) => setTablePageSize(Number(v))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="5">5</SelectItem>
+                          <SelectItem value="10">10</SelectItem>
+                          <SelectItem value="20">20</SelectItem>
+                          <SelectItem value="50">50</SelectItem>
+                          <SelectItem value="100">100</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
