@@ -36,7 +36,8 @@ Responda SEMPRE em JSON com a estrutura:
     const userPrompt = `Analise estes dados e sugira KPIs financeiros, gráficos e queries:
 
 Schema: ${JSON.stringify(schemaInfo)}
-Amostra de dados: ${JSON.stringify(sampleData?.slice(0, 5))}
+Total de registros: ${sampleData?.length || 0}
+Amostra de dados (500 registros): ${JSON.stringify(sampleData?.slice(0, 500))}
 Tipo de análise: ${analysisType || 'full'}`;
 
     console.log("Calling Lovable AI for analysis...");

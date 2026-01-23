@@ -104,7 +104,7 @@ export default function ProjectDashboard() {
       if (sourcesData && sourcesData.length > 0) {
         try {
           const data = await fetchData(sourcesData[0].id);
-          setAllData(data.slice(0, 1000));
+          setAllData(data);
         } catch (e) {
           console.error("Error loading data for filters:", e);
         }
