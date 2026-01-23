@@ -3,9 +3,10 @@ import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { DynamicKPI } from "@/components/ui/DynamicKPI";
 import { DynamicChart } from "@/components/ui/DynamicChart";
+import { DynamicTable } from "@/components/ui/DynamicTable";
 import { DashboardFilters, applyFilters } from "@/components/ui/DashboardFilters";
 import { ExportButton } from "@/components/ui/ExportButton";
-import { Loader2, BarChart3, AlertCircle } from "lucide-react";
+import { Loader2, BarChart3, AlertCircle, Table as TableIcon } from "lucide-react";
 import type { Json } from "@/integrations/supabase/types";
 
 interface SharedDashboard {
@@ -38,7 +39,7 @@ export default function PublicDashboard() {
   const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [filters, setFilters] = useState<Record<string, unknown>>({});
-  const [allData, setAllData] = useState<Record<string, unknown>[]>([]);
+  const [tableDataCollector, setTableDataCollector] = useState<Map<string, Record<string, unknown>[]>>(new Map());
 
   const fetchDashboard = useCallback(async () => {
     if (!token) {
@@ -112,6 +113,19 @@ export default function PublicDashboard() {
   // Separate widgets by type
   const kpiWidgets = widgets.filter(w => w.widget_type === "kpi");
   const chartWidgets = widgets.filter(w => w.widget_type === "chart");
+  const tableWidgets = widgets.filter(w => w.widget_type === "table");
+
+  // Collect data from tables for global export
+  const handleTableDataLoaded = (widgetId: string, data: Record<string, unknown>[]) => {
+    setTableDataCollector(prev => {
+      const newMap = new Map(prev);
+      newMap.set(widgetId, data);
+      return newMap;
+    });
+  };
+
+  // Combine all table data for export
+  const allData = Array.from(tableDataCollector.values()).flat();
 
   // Filter data for export
   const filteredData = applyFilters(allData, filters);
@@ -207,6 +221,28 @@ export default function PublicDashboard() {
                     filters={filters}
                   />
                 ))}
+              </div>
+            )}
+
+            {/* Tables */}
+            {tableWidgets.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <TableIcon className="h-5 w-5 text-primary" />
+                  <h3 className="text-lg font-semibold">Tabelas de Dados</h3>
+                </div>
+                <div className="space-y-6">
+                  {tableWidgets.map((widget) => (
+                    <DynamicTable
+                      key={widget.id}
+                      title={widget.title}
+                      dataSourceId={widget.data_source_id || ""}
+                      config={widget.config as { columns?: string[]; pageSize?: number }}
+                      filters={filters}
+                      onDataLoaded={(data) => handleTableDataLoaded(widget.id, data)}
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </div>
