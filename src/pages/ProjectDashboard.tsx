@@ -17,8 +17,12 @@ import {
   Loader2,
   LayoutDashboard,
   Trash2,
-  Plus,
   BarChart3,
+  Upload,
+  Share2,
+  ChevronRight,
+  Home,
+  FolderKanban,
 } from "lucide-react";
 import type { Json } from "@/integrations/supabase/types";
 
@@ -158,7 +162,26 @@ export default function ProjectDashboard() {
 
   return (
     <AppLayout>
-      <div className="space-y-8 animate-fade-in">
+      <div className="space-y-6 animate-fade-in">
+        {/* Breadcrumb */}
+        <nav className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Link to="/dashboard" className="hover:text-foreground transition-colors flex items-center gap-1">
+            <Home className="h-4 w-4" />
+            <span>Início</span>
+          </Link>
+          <ChevronRight className="h-4 w-4" />
+          <Link to="/projects" className="hover:text-foreground transition-colors flex items-center gap-1">
+            <FolderKanban className="h-4 w-4" />
+            <span>Projetos</span>
+          </Link>
+          <ChevronRight className="h-4 w-4" />
+          <Link to={`/projects/${projectId}`} className="hover:text-foreground transition-colors">
+            {project.name}
+          </Link>
+          <ChevronRight className="h-4 w-4" />
+          <span className="text-foreground font-medium">Dashboard</span>
+        </nav>
+
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">
@@ -176,22 +199,26 @@ export default function ProjectDashboard() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 flex-wrap">
-            <DashboardFilters
-              schemaInfo={schemaInfo}
-              data={allData}
-              filters={filters}
-              onFiltersChange={setFilters}
-            />
+          <div className="flex items-center gap-2 flex-wrap">
+            {schemaInfo && allData.length > 0 && (
+              <DashboardFilters
+                schemaInfo={schemaInfo}
+                data={allData}
+                filters={filters}
+                onFiltersChange={setFilters}
+              />
+            )}
             {allData.length > 0 && (
               <ExportButton data={allData} filename={`dashboard-${project.name}`} />
             )}
-            <ShareDashboard
-              projectId={project.id}
-              projectName={project.name}
-              widgetIds={widgets.map((w) => w.id)}
-              filterConfig={filters as unknown as import("@/integrations/supabase/types").Json}
-            />
+            {widgets.length > 0 && (
+              <ShareDashboard
+                projectId={project.id}
+                projectName={project.name}
+                widgetIds={widgets.map((w) => w.id)}
+                filterConfig={filters as unknown as Json}
+              />
+            )}
             <DashboardBuilder projectId={projectId} onWidgetCreated={loadDashboard} />
           </div>
         </div>
@@ -201,11 +228,22 @@ export default function ProjectDashboard() {
           <div className="glass-card rounded-xl p-12 text-center">
             <BarChart3 className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2">Dashboard vazio</h2>
-            <p className="text-muted-foreground mb-6">
-              Adicione widgets de KPIs e gráficos para visualizar seus dados
+            <p className="text-muted-foreground mb-2">
+              {dataSources.length === 0 
+                ? "Adicione uma fonte de dados primeiro para criar widgets"
+                : "Adicione widgets de KPIs e gráficos para visualizar seus dados"}
             </p>
-            <div className="flex justify-center gap-4">
-              <DashboardBuilder projectId={projectId} onWidgetCreated={loadDashboard} />
+            <div className="flex justify-center gap-4 mt-6">
+              {dataSources.length === 0 ? (
+                <Link to={`/upload?project=${projectId}`}>
+                  <Button className="btn-gradient">
+                    <Upload className="h-4 w-4 mr-2" />
+                    Adicionar Dados
+                  </Button>
+                </Link>
+              ) : (
+                <DashboardBuilder projectId={projectId} onWidgetCreated={loadDashboard} />
+              )}
               <Link to={`/analyses?project=${projectId}`}>
                 <Button variant="outline">
                   <BarChart3 className="h-4 w-4 mr-2" />
@@ -216,6 +254,27 @@ export default function ProjectDashboard() {
           </div>
         ) : (
           <div className="space-y-8">
+            {/* Share reminder when widgets exist */}
+            {widgets.length > 0 && (
+              <div className="flex items-center justify-between p-4 rounded-lg bg-primary/5 border border-primary/20">
+                <div className="flex items-center gap-3">
+                  <Share2 className="h-5 w-5 text-primary" />
+                  <div>
+                    <p className="font-medium">Compartilhe este dashboard</p>
+                    <p className="text-sm text-muted-foreground">
+                      Gere um link público para compartilhar com sua equipe
+                    </p>
+                  </div>
+                </div>
+                <ShareDashboard
+                  projectId={project.id}
+                  projectName={project.name}
+                  widgetIds={widgets.map((w) => w.id)}
+                  filterConfig={filters as unknown as Json}
+                />
+              </div>
+            )}
+
             {/* KPIs */}
             {kpiWidgets.length > 0 && (
               <div>

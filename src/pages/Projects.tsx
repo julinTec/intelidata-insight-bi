@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,9 @@ import {
   Pencil, 
   Trash2,
   FileSpreadsheet,
-  BarChart3
+  BarChart3,
+  LayoutDashboard,
+  Share2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -52,6 +55,7 @@ const statuses = [
 
 export default function Projects() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -109,16 +113,22 @@ export default function Projects() {
         if (error) throw error;
         toast.success("Projeto atualizado!");
       } else {
-        const { error } = await supabase.from("projects").insert({
+        const { data, error } = await supabase.from("projects").insert({
           user_id: user.id,
           name: formData.name,
           description: formData.description || null,
           category: formData.category,
           status: formData.status,
-        });
+        }).select().single();
 
         if (error) throw error;
         toast.success("Projeto criado!");
+        
+        // Navigate to the new project
+        if (data) {
+          navigate(`/projects/${data.id}`);
+          return;
+        }
       }
 
       setDialogOpen(false);
@@ -133,7 +143,9 @@ export default function Projects() {
     }
   };
 
-  const handleEdit = (project: Project) => {
+  const handleEdit = (e: React.MouseEvent, project: Project) => {
+    e.stopPropagation();
+    e.preventDefault();
     setEditingProject(project);
     setFormData({
       name: project.name,
@@ -144,7 +156,9 @@ export default function Projects() {
     setDialogOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    e.preventDefault();
     if (!confirm("Tem certeza que deseja excluir este projeto?")) return;
 
     const { error } = await supabase.from("projects").delete().eq("id", id);
@@ -302,71 +316,108 @@ export default function Projects() {
             {projects.map((project) => {
               const statusInfo = getStatusInfo(project.status);
               return (
-                <div
+                <Link
                   key={project.id}
-                  className="glass-card rounded-xl p-6 hover:border-primary/30 transition-all group"
+                  to={`/projects/${project.id}`}
+                  className="block group"
                 >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                        <FolderKanban className="h-5 w-5" />
+                  <div className="glass-card rounded-xl p-6 hover:border-primary/30 transition-all h-full cursor-pointer">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                          <FolderKanban className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold group-hover:text-primary transition-colors">
+                            {project.name}
+                          </h3>
+                          <span className="text-xs text-muted-foreground">
+                            {getCategoryLabel(project.category)}
+                          </span>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-semibold">{project.name}</h3>
-                        <span className="text-xs text-muted-foreground">
-                          {getCategoryLabel(project.category)}
-                        </span>
-                      </div>
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={(e) => e.preventDefault()}
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={(e) => handleEdit(e as unknown as React.MouseEvent, project)}>
+                            <Pencil className="h-4 w-4 mr-2" />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={(e) => handleDelete(e as unknown as React.MouseEvent, project.id)}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
 
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    {project.description && (
+                      <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+                        {project.description}
+                      </p>
+                    )}
+
+                    <div className="flex items-center justify-between">
+                      <span className={`px-2 py-1 text-xs rounded-full ${statusInfo.color} text-background`}>
+                        {statusInfo.label}
+                      </span>
+                      <div className="flex gap-1">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-8 text-xs"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            navigate(`/upload?project=${project.id}`);
+                          }}
                         >
-                          <MoreVertical className="h-4 w-4" />
+                          <FileSpreadsheet className="h-3 w-3 mr-1" />
+                          Dados
                         </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleEdit(project)}>
-                          <Pencil className="h-4 w-4 mr-2" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem 
-                          onClick={() => handleDelete(project.id)}
-                          className="text-destructive"
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-8 text-xs"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            navigate(`/projects/${project.id}/dashboard`);
+                          }}
                         >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Excluir
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  {project.description && (
-                    <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                      {project.description}
-                    </p>
-                  )}
-
-                  <div className="flex items-center justify-between">
-                    <span className={`px-2 py-1 text-xs rounded-full ${statusInfo.color} text-background`}>
-                      {statusInfo.label}
-                    </span>
-                    <div className="flex gap-2">
-                      <Button variant="ghost" size="sm" className="h-8 text-xs">
-                        <FileSpreadsheet className="h-3 w-3 mr-1" />
-                        Dados
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-8 text-xs">
-                        <BarChart3 className="h-3 w-3 mr-1" />
-                        Análises
-                      </Button>
+                          <LayoutDashboard className="h-3 w-3 mr-1" />
+                          Dashboard
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-8 text-xs"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            navigate(`/analyses?project=${project.id}`);
+                          }}
+                        >
+                          <BarChart3 className="h-3 w-3 mr-1" />
+                          Análises
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>

@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
+import * as XLSX from "xlsx";
 
 interface ConnectionConfig {
   url?: string;
@@ -25,6 +26,10 @@ export interface UseDataSourceResult {
   fetchData: (dataSourceOrId: DataSource | string) => Promise<Record<string, unknown>[]>;
   getDataSource: (dataSourceId: string) => Promise<DataSource | null>;
 }
+
+// Cache for parsed file data
+const dataCache = new Map<string, { data: Record<string, unknown>[]; timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 export function useDataSource(): UseDataSourceResult {
   const [data, setData] = useState<Record<string, unknown>[]>([]);
@@ -73,6 +78,97 @@ export function useDataSource(): UseDataSourceResult {
     return data as DataSource;
   };
 
+  const parseCSVContent = (text: string): Record<string, unknown>[] => {
+    const lines = text.trim().split('\n');
+    if (lines.length < 2) return [];
+
+    // Handle both comma and semicolon as delimiters
+    const delimiter = lines[0].includes(';') ? ';' : ',';
+    
+    const headers = lines[0].split(delimiter).map((h) => h.trim().replace(/^["']|["']$/g, ''));
+    
+    return lines.slice(1).map((line) => {
+      const values: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"' && line[i - 1] !== '\\') {
+          inQuotes = !inQuotes;
+        } else if (char === delimiter && !inQuotes) {
+          values.push(current.trim().replace(/^["']|["']$/g, ''));
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      values.push(current.trim().replace(/^["']|["']$/g, ''));
+
+      const row: Record<string, unknown> = {};
+      headers.forEach((header, index) => {
+        const value = values[index] || '';
+        // Try to parse numbers
+        const numValue = parseFloat(value.replace(',', '.'));
+        if (!isNaN(numValue) && value.trim() !== '') {
+          row[header] = numValue;
+        } else {
+          row[header] = value;
+        }
+      });
+      return row;
+    });
+  };
+
+  const fetchFileData = async (dataSource: DataSource): Promise<Record<string, unknown>[]> => {
+    if (!dataSource.file_url) {
+      throw new Error("URL do arquivo não encontrada");
+    }
+
+    // Check cache first
+    const cached = dataCache.get(dataSource.id);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      console.log("[useDataSource] Using cached data for:", dataSource.id);
+      return cached.data;
+    }
+
+    console.log("[useDataSource] Downloading file:", dataSource.file_url);
+
+    // Download file from storage
+    const { data: fileBlob, error: downloadError } = await supabase.storage
+      .from('data-files')
+      .download(dataSource.file_url);
+
+    if (downloadError || !fileBlob) {
+      console.error("[useDataSource] Download error:", downloadError);
+      throw new Error("Erro ao baixar arquivo: " + (downloadError?.message || "Arquivo não encontrado"));
+    }
+
+    let records: Record<string, unknown>[];
+
+    if (dataSource.source_type === 'csv') {
+      // Parse CSV
+      const text = await fileBlob.text();
+      records = parseCSVContent(text);
+    } else if (dataSource.source_type === 'excel' || dataSource.source_type === 'xlsx') {
+      // Parse Excel
+      const arrayBuffer = await fileBlob.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      records = XLSX.utils.sheet_to_json(worksheet) as Record<string, unknown>[];
+    } else {
+      throw new Error(`Tipo de arquivo não suportado: ${dataSource.source_type}`);
+    }
+
+    console.log("[useDataSource] Parsed records:", records.length);
+
+    // Cache the result
+    dataCache.set(dataSource.id, { data: records, timestamp: Date.now() });
+
+    return records;
+  };
+
   const fetchData = useCallback(async (dataSourceOrId: DataSource | string): Promise<Record<string, unknown>[]> => {
     setLoading(true);
     setError(null);
@@ -89,15 +185,13 @@ export function useDataSource(): UseDataSourceResult {
 
       // Handle file-based sources (CSV, Excel)
       if (dataSource.source_type === "csv" || dataSource.source_type === "excel" || dataSource.source_type === "xlsx") {
-        // For file sources, we need to get data from storage
-        // For now, return empty - this would need file parsing logic
-        console.log("[useDataSource] File source detected, file_url:", dataSource.file_url);
-        setData([]);
-        return [];
+        const records = await fetchFileData(dataSource);
+        setData(records);
+        return records;
       }
 
       if (dataSource.source_type !== "api_json") {
-        throw new Error("Apenas fontes API JSON são suportadas para visualização dinâmica");
+        throw new Error("Tipo de fonte não suportado: " + dataSource.source_type);
       }
 
       const config = dataSource.connection_config as ConnectionConfig | null;
