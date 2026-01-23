@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,9 +17,10 @@ import {
   FileSpreadsheet,
   PieChart,
   Trash2,
-  LayoutDashboard
+  LayoutDashboard,
+  ArrowRight,
+  BarChart3,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
 interface Project {
@@ -40,6 +42,7 @@ interface DashboardWidget {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,6 +91,18 @@ export default function Dashboard() {
 
   const kpiWidgets = widgets.filter((w) => w.widget_type === 'kpi');
   const chartWidgets = widgets.filter((w) => w.widget_type === 'chart');
+
+  const getCategoryLabel = (category: string) => {
+    const labels: Record<string, string> = {
+      financial: 'Financeiro',
+      revenue: 'Receitas',
+      costs: 'Custos',
+      indicators: 'Indicadores',
+      budget: 'Orçamento',
+      general: 'Geral',
+    };
+    return labels[category] || category;
+  };
 
   return (
     <AppLayout>
@@ -249,15 +264,20 @@ export default function Dashboard() {
                   {projects.map((project) => (
                     <div
                       key={project.id}
-                      className="flex items-center justify-between p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors"
+                      onClick={() => navigate(`/projects/${project.id}`)}
+                      className="flex items-center justify-between p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors cursor-pointer group"
                     >
                       <div className="flex items-center gap-3">
                         <div className="p-2 rounded-lg bg-primary/10">
                           <FolderKanban className="h-4 w-4 text-primary" />
                         </div>
                         <div>
-                          <p className="font-medium text-foreground">{project.name}</p>
-                          <p className="text-xs text-muted-foreground capitalize">{project.category}</p>
+                          <p className="font-medium text-foreground group-hover:text-primary transition-colors">
+                            {project.name}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {getCategoryLabel(project.category)}
+                          </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -268,6 +288,31 @@ export default function Dashboard() {
                         }`}>
                           {project.status === 'active' ? 'Ativo' : project.status}
                         </span>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/projects/${project.id}/dashboard`);
+                            }}
+                          >
+                            <LayoutDashboard className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/analyses?project=${project.id}`);
+                            }}
+                          >
+                            <BarChart3 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
                     </div>
                   ))}

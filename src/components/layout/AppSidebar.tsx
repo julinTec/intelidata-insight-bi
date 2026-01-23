@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -13,17 +13,29 @@ import {
   Sparkles,
   FolderKanban,
   TrendingUp,
+  ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 
 interface NavItem {
   label: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
+}
+
+interface RecentProject {
+  id: string;
+  name: string;
 }
 
 const mainNavItems: NavItem[] = [
@@ -41,9 +53,30 @@ const bottomNavItems: NavItem[] = [
 
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false);
+  const [projectsOpen, setProjectsOpen] = useState(true);
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+
+  useEffect(() => {
+    if (user) {
+      loadRecentProjects();
+    }
+  }, [user]);
+
+  const loadRecentProjects = async () => {
+    if (!user) return;
+    
+    const { data } = await supabase
+      .from('projects')
+      .select('id, name')
+      .eq('user_id', user.id)
+      .order('updated_at', { ascending: false })
+      .limit(5);
+    
+    setRecentProjects(data || []);
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -53,6 +86,10 @@ export function AppSidebar() {
   const userInitials = user?.user_metadata?.full_name
     ? user.user_metadata.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
     : user?.email?.slice(0, 2).toUpperCase() || 'U';
+
+  // Check if we're on a project page
+  const isProjectPage = location.pathname.startsWith('/projects/');
+  const currentProjectId = isProjectPage ? location.pathname.split('/')[2] : null;
 
   return (
     <aside
@@ -87,7 +124,8 @@ export function AppSidebar() {
       {/* Main Navigation */}
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         {mainNavItems.map((item) => {
-          const isActive = location.pathname === item.href;
+          const isActive = location.pathname === item.href || 
+            (item.href === '/projects' && location.pathname.startsWith('/projects'));
           return (
             <Link
               key={item.href}
@@ -105,6 +143,38 @@ export function AppSidebar() {
             </Link>
           );
         })}
+
+        {/* Recent Projects Section */}
+        {!collapsed && recentProjects.length > 0 && (
+          <div className="pt-4">
+            <Collapsible open={projectsOpen} onOpenChange={setProjectsOpen}>
+              <CollapsibleTrigger className="flex items-center justify-between w-full px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground">
+                <span>PROJETOS RECENTES</span>
+                <ChevronDown className={cn(
+                  "h-3 w-3 transition-transform",
+                  projectsOpen && "rotate-180"
+                )} />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-1 mt-1">
+                {recentProjects.map((project) => (
+                  <Link
+                    key={project.id}
+                    to={`/projects/${project.id}`}
+                    className={cn(
+                      'flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all',
+                      currentProjectId === project.id
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                    )}
+                  >
+                    <FolderKanban className="h-4 w-4 flex-shrink-0" />
+                    <span className="truncate">{project.name}</span>
+                  </Link>
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+        )}
 
         {!collapsed && (
           <div className="pt-4">
