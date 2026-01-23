@@ -13,18 +13,19 @@ import {
   Package
 } from "lucide-react";
 
-interface WidgetConfig {
+export interface WidgetConfig {
   field?: string;
   aggregation?: "sum" | "count" | "avg" | "min" | "max";
   format?: "currency" | "number" | "percent";
   icon?: string;
 }
 
-interface DynamicKPIProps {
+export interface DynamicKPIProps {
   title: string;
   dataSourceId: string;
-  config: WidgetConfig;
+  config: WidgetConfig | Record<string, unknown>;
   className?: string;
+  filters?: Record<string, unknown>;
 }
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -38,10 +39,18 @@ const iconMap: Record<string, React.ReactNode> = {
   package: <Package className="h-5 w-5" />,
 };
 
-export function DynamicKPI({ title, dataSourceId, config, className }: DynamicKPIProps) {
+export function DynamicKPI({ title, dataSourceId, config, className, filters }: DynamicKPIProps) {
   const { fetchData, getDataSource, loading } = useDataSource();
   const [value, setValue] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+
+  // Normalize config
+  const normalizedConfig: WidgetConfig = {
+    field: config.field as string | undefined,
+    aggregation: (config.aggregation as WidgetConfig["aggregation"]) || "count",
+    format: (config.format as WidgetConfig["format"]) || "number",
+    icon: config.icon as string | undefined,
+  };
 
   useEffect(() => {
     async function loadData() {
@@ -52,21 +61,27 @@ export function DynamicKPI({ title, dataSourceId, config, className }: DynamicKP
           return;
         }
 
-        const records = await fetchData(dataSource);
+        let records = await fetchData(dataSource);
+        
+        // Apply filters if provided
+        if (filters && Object.keys(filters).length > 0) {
+          records = applyFiltersToData(records, filters);
+        }
+        
         if (records.length === 0) {
           setValue("0");
           return;
         }
 
-        const calculatedValue = calculateValue(records, config);
-        setValue(formatValue(calculatedValue, config.format));
+        const calculatedValue = calculateValue(records, normalizedConfig);
+        setValue(formatValue(calculatedValue, normalizedConfig.format));
       } catch (err) {
         setError(err instanceof Error ? err.message : "Erro ao carregar dados");
       }
     }
 
     loadData();
-  }, [dataSourceId, config, fetchData, getDataSource]);
+  }, [dataSourceId, config, filters, fetchData, getDataSource]);
 
   if (loading) {
     return <Skeleton className="h-32 w-full" />;
@@ -84,7 +99,7 @@ export function DynamicKPI({ title, dataSourceId, config, className }: DynamicKP
     );
   }
 
-  const icon = config.icon ? iconMap[config.icon] : iconMap.hash;
+  const icon = normalizedConfig.icon ? iconMap[normalizedConfig.icon] : iconMap.hash;
 
   return (
     <KPICard
@@ -94,6 +109,45 @@ export function DynamicKPI({ title, dataSourceId, config, className }: DynamicKP
       className={className}
     />
   );
+}
+
+// Helper to apply filters
+function applyFiltersToData(
+  data: Record<string, unknown>[],
+  filters: Record<string, unknown>
+): Record<string, unknown>[] {
+  if (!filters || Object.keys(filters).length === 0) return data;
+
+  return data.filter((row) => {
+    for (const [key, value] of Object.entries(filters)) {
+      if (value === null || value === undefined || value === "" || value === "all") continue;
+
+      if (key.endsWith("_min")) {
+        const field = key.replace("_min", "");
+        const rowValue = Number(row[field]);
+        if (!isNaN(rowValue) && rowValue < Number(value)) return false;
+      } else if (key.endsWith("_max")) {
+        const field = key.replace("_max", "");
+        const rowValue = Number(row[field]);
+        if (!isNaN(rowValue) && rowValue > Number(value)) return false;
+      } else if (key.endsWith("_from")) {
+        const field = key.replace("_from", "");
+        const rowDate = new Date(row[field] as string);
+        const filterDate = new Date(value as string);
+        if (rowDate < filterDate) return false;
+      } else if (key.endsWith("_to")) {
+        const field = key.replace("_to", "");
+        const rowDate = new Date(row[field] as string);
+        const filterDate = new Date(value as string);
+        if (rowDate > filterDate) return false;
+      } else {
+        const rowValue = String(row[key] ?? "").toLowerCase();
+        const filterValue = String(value).toLowerCase();
+        if (!rowValue.includes(filterValue)) return false;
+      }
+    }
+    return true;
+  });
 }
 
 function calculateValue(records: Record<string, unknown>[], config: WidgetConfig): number {

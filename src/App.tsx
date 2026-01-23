@@ -8,6 +8,9 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Upload from "./pages/Upload";
 import Projects from "./pages/Projects";
+import ProjectDetails from "./pages/ProjectDetails";
+import ProjectDashboard from "./pages/ProjectDashboard";
+import PublicDashboard from "./pages/PublicDashboard";
 import Analyses from "./pages/Analyses";
 import Templates from "./pages/Templates";
 import Connections from "./pages/Connections";
@@ -29,6 +32,9 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/upload" element={<Upload />} />
             <Route path="/projects" element={<Projects />} />
+            <Route path="/projects/:id" element={<ProjectDetails />} />
+            <Route path="/projects/:id/dashboard" element={<ProjectDashboard />} />
+            <Route path="/public/dashboard/:token" element={<PublicDashboard />} />
             <Route path="/analyses" element={<Analyses />} />
             <Route path="/templates" element={<Templates />} />
             <Route path="/connections" element={<Connections />} />

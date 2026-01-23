@@ -34,16 +34,18 @@ interface DataSource {
   schema_info: Json | null;
 }
 
-interface DashboardBuilderProps {
+export interface DashboardBuilderProps {
   onWidgetCreated?: () => void;
+  projectId?: string;
 }
 
-export function DashboardBuilder({ onWidgetCreated }: DashboardBuilderProps) {
+export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId }: DashboardBuilderProps) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
-  const [selectedProject, setSelectedProject] = useState("");
+  const [selectedProject, setSelectedProject] = useState(initialProjectId || "");
+  
   const [selectedDataSource, setSelectedDataSource] = useState("");
   const [widgetType, setWidgetType] = useState<"kpi" | "chart">("kpi");
   const [title, setTitle] = useState("");
