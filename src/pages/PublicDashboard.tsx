@@ -4,9 +4,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { DynamicKPI } from "@/components/ui/DynamicKPI";
 import { DynamicChart } from "@/components/ui/DynamicChart";
 import { DynamicTable } from "@/components/ui/DynamicTable";
+import { DynamicFilter } from "@/components/ui/DynamicFilter";
 import { DashboardFilters, applyFilters } from "@/components/ui/DashboardFilters";
 import { ExportButton } from "@/components/ui/ExportButton";
-import { Loader2, BarChart3, AlertCircle, Table as TableIcon } from "lucide-react";
+import { useDataSource } from "@/hooks/useDataSource";
+import { Loader2, BarChart3, AlertCircle, Table as TableIcon, Filter } from "lucide-react";
 import type { Json } from "@/integrations/supabase/types";
 
 interface SharedDashboard {
@@ -40,6 +42,8 @@ export default function PublicDashboard() {
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [filters, setFilters] = useState<Record<string, unknown>>({});
   const [tableDataCollector, setTableDataCollector] = useState<Map<string, Record<string, unknown>[]>>(new Map());
+  const [filterSourceData, setFilterSourceData] = useState<Record<string, unknown>[]>([]);
+  const { fetchData } = useDataSource();
 
   const fetchDashboard = useCallback(async () => {
     if (!token) {
@@ -86,6 +90,16 @@ export default function PublicDashboard() {
 
             if (sourcesData) {
               setDataSources(sourcesData as DataSource[]);
+              
+              // Carregar dados para popular os filtros
+              if (sourcesData.length > 0) {
+                try {
+                  const data = await fetchData(sourcesData[0].id);
+                  setFilterSourceData(data);
+                } catch (e) {
+                  console.error("Erro ao carregar dados para filtros:", e);
+                }
+              }
             }
           }
         }
@@ -114,6 +128,7 @@ export default function PublicDashboard() {
   const kpiWidgets = widgets.filter(w => w.widget_type === "kpi");
   const chartWidgets = widgets.filter(w => w.widget_type === "chart");
   const tableWidgets = widgets.filter(w => w.widget_type === "table");
+  const filterWidgets = widgets.filter(w => w.widget_type === "filter");
 
   // Collect data from tables for global export
   const handleTableDataLoaded = (widgetId: string, data: Record<string, unknown>[]) => {
@@ -194,6 +209,35 @@ export default function PublicDashboard() {
           </div>
         ) : (
           <div className="space-y-8">
+            {/* Filters */}
+            {filterWidgets.length > 0 && (
+              <div className="glass-card rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <Filter className="h-5 w-5 text-primary" />
+                  <h3 className="text-lg font-semibold">Filtros</h3>
+                  {Object.keys(filters).length > 0 && (
+                    <span className="bg-primary/20 text-primary text-xs px-2 py-0.5 rounded-full">
+                      {Object.keys(filters).length} ativo(s)
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filterWidgets.map((widget) => (
+                    <DynamicFilter
+                      key={widget.id}
+                      title={widget.title}
+                      dataSourceId={widget.data_source_id || ""}
+                      config={widget.config as { fields: string[]; layout: "horizontal" | "vertical" }}
+                      filters={filters}
+                      onFiltersChange={setFilters}
+                      schemaInfo={schemaInfo}
+                      data={filterSourceData}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* KPIs */}
             {kpiWidgets.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
