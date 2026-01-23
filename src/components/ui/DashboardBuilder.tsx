@@ -18,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "./dialog";
 import { toast } from "sonner";
 import { Plus, BarChart3, Hash, Loader2, FolderKanban, Upload, AlertCircle, Database, Link2, FileSpreadsheet, Table as TableIcon } from "lucide-react";
@@ -288,13 +289,13 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
           Adicionar Widget
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Novo Widget do Dashboard</DialogTitle>
         </DialogHeader>
 
         {renderEmptyState() || (
-          <div className="space-y-4 mt-4">
+          <div className="flex-1 overflow-y-auto space-y-4 mt-4 pr-2">
             <div className="space-y-2">
               <Label>Projeto</Label>
               <Select value={selectedProject} onValueChange={setSelectedProject}>
@@ -538,24 +539,32 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
                     </div>
                   </>
                 )}
-
-                <Button
-                  onClick={handleCreate}
-                  disabled={loading || !selectedProject || !selectedDataSource || !title}
-                  className="w-full btn-gradient"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Criando...
-                    </>
-                  ) : (
-                    "Criar Widget"
-                  )}
-                </Button>
               </>
             )}
           </div>
+        )}
+
+        {/* Footer fixo com botão Aplicar */}
+        {dataSources.length > 0 && selectedDataSource && (
+          <DialogFooter className="mt-4 pt-4 border-t">
+            <Button
+              onClick={handleCreate}
+              disabled={loading || !selectedProject || !selectedDataSource || !title}
+              className="w-full btn-gradient"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Criando...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Aplicar
+                </>
+              )}
+            </Button>
+          </DialogFooter>
         )}
       </DialogContent>
     </Dialog>
