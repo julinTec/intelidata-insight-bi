@@ -7,7 +7,7 @@ interface ConnectionConfig {
   dataPath?: string | null;
 }
 
-interface DataSource {
+export interface DataSource {
   id: string;
   name: string;
   source_type: string;
@@ -15,13 +15,14 @@ interface DataSource {
   row_count: number | null;
   connection_config: Json | null;
   project_id: string;
+  file_url?: string | null;
 }
 
-interface UseDataSourceResult {
+export interface UseDataSourceResult {
   data: Record<string, unknown>[];
   loading: boolean;
   error: string | null;
-  fetchData: (dataSource: DataSource) => Promise<Record<string, unknown>[]>;
+  fetchData: (dataSourceOrId: DataSource | string) => Promise<Record<string, unknown>[]>;
   getDataSource: (dataSourceId: string) => Promise<DataSource | null>;
 }
 
@@ -57,13 +58,46 @@ export function useDataSource(): UseDataSourceResult {
     return results;
   };
 
-  const fetchData = useCallback(async (dataSource: DataSource): Promise<Record<string, unknown>[]> => {
+  const getDataSourceById = async (dataSourceId: string): Promise<DataSource | null> => {
+    const { data, error } = await supabase
+      .from("data_sources")
+      .select("*")
+      .eq("id", dataSourceId)
+      .single();
+
+    if (error || !data) {
+      console.error("[useDataSource] Error fetching data source:", error);
+      return null;
+    }
+
+    return data as DataSource;
+  };
+
+  const fetchData = useCallback(async (dataSourceOrId: DataSource | string): Promise<Record<string, unknown>[]> => {
     setLoading(true);
     setError(null);
 
     try {
+      // Resolve data source if string ID was passed
+      const dataSource = typeof dataSourceOrId === "string" 
+        ? await getDataSourceById(dataSourceOrId)
+        : dataSourceOrId;
+
+      if (!dataSource) {
+        throw new Error("Fonte de dados não encontrada");
+      }
+
+      // Handle file-based sources (CSV, Excel)
+      if (dataSource.source_type === "csv" || dataSource.source_type === "excel" || dataSource.source_type === "xlsx") {
+        // For file sources, we need to get data from storage
+        // For now, return empty - this would need file parsing logic
+        console.log("[useDataSource] File source detected, file_url:", dataSource.file_url);
+        setData([]);
+        return [];
+      }
+
       if (dataSource.source_type !== "api_json") {
-        throw new Error("Apenas fontes API JSON são suportadas no momento");
+        throw new Error("Apenas fontes API JSON são suportadas para visualização dinâmica");
       }
 
       const config = dataSource.connection_config as ConnectionConfig | null;

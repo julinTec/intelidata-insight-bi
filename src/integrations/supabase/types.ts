@@ -251,6 +251,48 @@ export type Database = {
         }
         Relationships: []
       }
+      shared_dashboards: {
+        Row: {
+          created_at: string | null
+          expires_at: string | null
+          filter_config: Json | null
+          id: string
+          is_active: boolean | null
+          project_id: string
+          share_token: string
+          title: string
+          updated_at: string | null
+          user_id: string
+          widget_ids: string[]
+        }
+        Insert: {
+          created_at?: string | null
+          expires_at?: string | null
+          filter_config?: Json | null
+          id?: string
+          is_active?: boolean | null
+          project_id: string
+          share_token: string
+          title: string
+          updated_at?: string | null
+          user_id: string
+          widget_ids?: string[]
+        }
+        Update: {
+          created_at?: string | null
+          expires_at?: string | null
+          filter_config?: Json | null
+          id?: string
+          is_active?: boolean | null
+          project_id?: string
+          share_token?: string
+          title?: string
+          updated_at?: string | null
+          user_id?: string
+          widget_ids?: string[]
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

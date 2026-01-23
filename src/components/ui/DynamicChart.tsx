@@ -20,7 +20,7 @@ import {
   Legend,
 } from "recharts";
 
-interface ChartConfig {
+export interface ChartConfig {
   chartType: "bar" | "line" | "area" | "pie";
   xField?: string;
   yField?: string;
@@ -28,11 +28,12 @@ interface ChartConfig {
   aggregation?: "sum" | "count" | "avg";
 }
 
-interface DynamicChartProps {
+export interface DynamicChartProps {
   title: string;
   dataSourceId: string;
-  config: ChartConfig;
+  config: ChartConfig | Record<string, unknown>;
   className?: string;
+  filters?: Record<string, unknown>;
 }
 
 const COLORS = [
@@ -44,10 +45,19 @@ const COLORS = [
   "hsl(120, 60%, 50%)",
 ];
 
-export function DynamicChart({ title, dataSourceId, config, className }: DynamicChartProps) {
+export function DynamicChart({ title, dataSourceId, config, className, filters }: DynamicChartProps) {
   const { fetchData, getDataSource, loading } = useDataSource();
   const [chartData, setChartData] = useState<Record<string, unknown>[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Normalize config
+  const normalizedConfig: ChartConfig = {
+    chartType: (config.chartType as ChartConfig["chartType"]) || "bar",
+    xField: config.xField as string | undefined,
+    yField: config.yField as string | undefined,
+    groupBy: config.groupBy as string | undefined,
+    aggregation: (config.aggregation as ChartConfig["aggregation"]) || "count",
+  };
 
   useEffect(() => {
     async function loadData() {
@@ -58,13 +68,19 @@ export function DynamicChart({ title, dataSourceId, config, className }: Dynamic
           return;
         }
 
-        const records = await fetchData(dataSource);
+        let records = await fetchData(dataSource);
+        
+        // Apply filters if provided
+        if (filters && Object.keys(filters).length > 0) {
+          records = applyFiltersToData(records, filters);
+        }
+        
         if (records.length === 0) {
           setChartData([]);
           return;
         }
 
-        const processed = processDataForChart(records, config);
+        const processed = processDataForChart(records, normalizedConfig);
         setChartData(processed);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Erro ao carregar dados");
@@ -72,7 +88,7 @@ export function DynamicChart({ title, dataSourceId, config, className }: Dynamic
     }
 
     loadData();
-  }, [dataSourceId, config, fetchData, getDataSource]);
+  }, [dataSourceId, config, filters, fetchData, getDataSource]);
 
   if (loading) {
     return <Skeleton className="h-64 w-full" />;
@@ -112,12 +128,51 @@ export function DynamicChart({ title, dataSourceId, config, className }: Dynamic
       <CardContent>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
-            {renderChart(config.chartType, chartData, config)}
+            {renderChart(normalizedConfig.chartType, chartData, normalizedConfig)}
           </ResponsiveContainer>
         </div>
       </CardContent>
     </Card>
   );
+}
+
+// Helper to apply filters
+function applyFiltersToData(
+  data: Record<string, unknown>[],
+  filters: Record<string, unknown>
+): Record<string, unknown>[] {
+  if (!filters || Object.keys(filters).length === 0) return data;
+
+  return data.filter((row) => {
+    for (const [key, value] of Object.entries(filters)) {
+      if (value === null || value === undefined || value === "" || value === "all") continue;
+
+      if (key.endsWith("_min")) {
+        const field = key.replace("_min", "");
+        const rowValue = Number(row[field]);
+        if (!isNaN(rowValue) && rowValue < Number(value)) return false;
+      } else if (key.endsWith("_max")) {
+        const field = key.replace("_max", "");
+        const rowValue = Number(row[field]);
+        if (!isNaN(rowValue) && rowValue > Number(value)) return false;
+      } else if (key.endsWith("_from")) {
+        const field = key.replace("_from", "");
+        const rowDate = new Date(row[field] as string);
+        const filterDate = new Date(value as string);
+        if (rowDate < filterDate) return false;
+      } else if (key.endsWith("_to")) {
+        const field = key.replace("_to", "");
+        const rowDate = new Date(row[field] as string);
+        const filterDate = new Date(value as string);
+        if (rowDate > filterDate) return false;
+      } else {
+        const rowValue = String(row[key] ?? "").toLowerCase();
+        const filterValue = String(value).toLowerCase();
+        if (!rowValue.includes(filterValue)) return false;
+      }
+    }
+    return true;
+  });
 }
 
 function processDataForChart(
