@@ -199,7 +199,7 @@ export default function Analyses() {
         setFetchingData(true);
         try {
           const freshData = await fetchApiJsonData(dataSource);
-          sampleData = freshData.slice(0, 100) as Record<string, unknown>[]; // Limit to 100 records for analysis
+          sampleData = freshData as Record<string, unknown>[]; // Send all records for analysis
           toast.success(`Dados atualizados: ${freshData.length} registros`);
         } catch (error) {
           toast.error(`Erro ao buscar dados: ${error instanceof Error ? error.message : "Erro desconhecido"}`);
