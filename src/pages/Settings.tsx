@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useTheme } from "next-themes";
 import { 
   Settings as SettingsIcon, 
   User, 
@@ -16,18 +17,95 @@ import {
   Palette,
   Download,
   Loader2,
-  Save
+  Save,
+  Moon,
+  Sun
 } from "lucide-react";
 
 export default function Settings() {
   const { user } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [saving, setSaving] = useState(false);
+  const [loadingPrefs, setLoadingPrefs] = useState(true);
   const [fullName, setFullName] = useState(user?.user_metadata?.full_name || "");
   const [preferences, setPreferences] = useState({
     defaultViewMode: "executive" as "executive" | "analyst",
-    darkMode: true,
     exportFormat: "xlsx" as "xlsx" | "csv" | "pdf",
   });
+
+  // Load preferences from database
+  useEffect(() => {
+    const loadPreferences = async () => {
+      if (!user) {
+        setLoadingPrefs(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from("user_preferences")
+          .select("*")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (data) {
+          setPreferences({
+            defaultViewMode: data.default_view_mode as "executive" | "analyst",
+            exportFormat: data.export_format as "xlsx" | "csv" | "pdf",
+          });
+          // Sync theme from database
+          setTheme(data.dark_mode ? "dark" : "light");
+        }
+      } catch (error) {
+        console.error("Error loading preferences:", error);
+      } finally {
+        setLoadingPrefs(false);
+      }
+    };
+
+    loadPreferences();
+  }, [user, setTheme]);
+
+  // Save a single preference to database
+  const savePreference = async (key: string, value: unknown) => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from("user_preferences")
+        .upsert(
+          {
+            user_id: user.id,
+            [key]: value,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" }
+        );
+
+      if (error) throw error;
+      toast.success("Preferência salva!");
+    } catch (error) {
+      console.error("Error saving preference:", error);
+      toast.error("Erro ao salvar preferência");
+    }
+  };
+
+  const handleViewModeChange = (mode: "executive" | "analyst") => {
+    setPreferences({ ...preferences, defaultViewMode: mode });
+    savePreference("default_view_mode", mode);
+  };
+
+  const handleThemeChange = (isDark: boolean) => {
+    setTheme(isDark ? "dark" : "light");
+    savePreference("dark_mode", isDark);
+  };
+
+  const handleExportFormatChange = (format: "xlsx" | "csv" | "pdf") => {
+    setPreferences({ ...preferences, exportFormat: format });
+    savePreference("export_format", format);
+  };
 
   const saveProfile = async () => {
     if (!user) return;
@@ -137,12 +215,8 @@ export default function Settings() {
               </div>
               <Switch
                 checked={preferences.defaultViewMode === "executive"}
-                onCheckedChange={() =>
-                  setPreferences({
-                    ...preferences,
-                    defaultViewMode: "executive",
-                  })
-                }
+                onCheckedChange={() => handleViewModeChange("executive")}
+                disabled={loadingPrefs}
               />
             </div>
 
@@ -158,12 +232,8 @@ export default function Settings() {
               </div>
               <Switch
                 checked={preferences.defaultViewMode === "analyst"}
-                onCheckedChange={() =>
-                  setPreferences({
-                    ...preferences,
-                    defaultViewMode: "analyst",
-                  })
-                }
+                onCheckedChange={() => handleViewModeChange("analyst")}
+                disabled={loadingPrefs}
               />
             </div>
           </div>
@@ -179,7 +249,11 @@ export default function Settings() {
           <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-background">
-                <Palette className="h-5 w-5" />
+                {theme === "dark" ? (
+                  <Moon className="h-5 w-5" />
+                ) : (
+                  <Sun className="h-5 w-5" />
+                )}
               </div>
               <div>
                 <p className="font-medium">Modo Escuro</p>
@@ -189,10 +263,9 @@ export default function Settings() {
               </div>
             </div>
             <Switch
-              checked={preferences.darkMode}
-              onCheckedChange={(checked) =>
-                setPreferences({ ...preferences, darkMode: checked })
-              }
+              checked={theme === "dark"}
+              onCheckedChange={(checked) => handleThemeChange(checked)}
+              disabled={loadingPrefs}
             />
           </div>
         </div>
@@ -211,10 +284,9 @@ export default function Settings() {
                 <Button
                   key={format}
                   variant={preferences.exportFormat === format ? "default" : "outline"}
-                  onClick={() =>
-                    setPreferences({ ...preferences, exportFormat: format })
-                  }
+                  onClick={() => handleExportFormatChange(format)}
                   className={preferences.exportFormat === format ? "btn-gradient" : ""}
+                  disabled={loadingPrefs}
                 >
                   {format.toUpperCase()}
                 </Button>
