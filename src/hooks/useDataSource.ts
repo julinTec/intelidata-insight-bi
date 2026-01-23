@@ -3,9 +3,20 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import * as XLSX from "xlsx";
 
+interface PaginationConfig {
+  type: "none" | "offset" | "page" | "url_param";
+  limitParam?: string;
+  offsetParam?: string;
+  pageParam?: string;
+  recordsPerPage?: number;
+  maxRecords?: number;
+  customUrlParams?: string;
+}
+
 interface ConnectionConfig {
   url?: string;
   dataPath?: string | null;
+  pagination?: PaginationConfig;
 }
 
 export interface DataSource {
@@ -201,40 +212,132 @@ export function useDataSource(): UseDataSourceResult {
 
       console.log("[useDataSource] Fetching data from:", config.url);
       console.log("[useDataSource] Using dataPath:", config.dataPath);
+      console.log("[useDataSource] Pagination config:", config.pagination);
 
-      const response = await fetch(config.url);
-      if (!response.ok) {
-        throw new Error(`Erro ao buscar dados: HTTP ${response.status}`);
-      }
+      let allRecords: Record<string, unknown>[] = [];
+      const pagination = config.pagination;
 
-      const jsonData = await response.json();
-      let extractedData = extractDataFromPath(jsonData, config.dataPath);
+      // Handle pagination
+      if (pagination && pagination.type !== "none") {
+        if (pagination.type === "url_param" && pagination.customUrlParams) {
+          // Simple URL param append (e.g., "limit=50000")
+          const separator = config.url.includes("?") ? "&" : "?";
+          const fullUrl = `${config.url}${separator}${pagination.customUrlParams}`;
+          console.log("[useDataSource] Fetching with custom params:", fullUrl);
+          
+          const response = await fetch(fullUrl);
+          if (!response.ok) {
+            throw new Error(`Erro ao buscar dados: HTTP ${response.status}`);
+          }
+          const jsonData = await response.json();
+          let extractedData = extractDataFromPath(jsonData, config.dataPath);
+          allRecords = Array.isArray(extractedData) ? extractedData as Record<string, unknown>[] : [extractedData as Record<string, unknown>];
+        } else if (pagination.type === "offset" || pagination.type === "page") {
+          // Automatic pagination
+          let offset = 0;
+          let page = 1;
+          let hasMore = true;
+          const recordsPerPage = pagination.recordsPerPage || 1000;
+          const maxRecords = pagination.maxRecords || 0;
 
-      if (extractedData === undefined) {
-        throw new Error(`Caminho "${config.dataPath}" não encontrado nos dados`);
-      }
+          while (hasMore) {
+            const url = new URL(config.url);
+            
+            if (pagination.type === "offset") {
+              url.searchParams.set(pagination.limitParam || "limit", recordsPerPage.toString());
+              url.searchParams.set(pagination.offsetParam || "offset", offset.toString());
+            } else {
+              url.searchParams.set(pagination.limitParam || "limit", recordsPerPage.toString());
+              url.searchParams.set(pagination.pageParam || "page", page.toString());
+            }
 
-      // Auto-detect arrays within objects
-      if (!Array.isArray(extractedData) && typeof extractedData === "object" && extractedData !== null) {
-        const paths = findArrayPaths(extractedData);
-        console.log("[useDataSource] Auto-detected array paths:", paths);
+            console.log(`[useDataSource] Fetching page ${page}, offset ${offset}:`, url.toString());
 
-        if (paths.length > 0) {
-          const bestPath = paths.reduce((a, b) => a.length > b.length ? a : b);
-          const fullPath = config.dataPath
-            ? `${config.dataPath}.${bestPath.path}`
-            : bestPath.path;
+            const response = await fetch(url.toString());
+            if (!response.ok) {
+              throw new Error(`Erro ao buscar dados: HTTP ${response.status}`);
+            }
 
-          console.log(`[useDataSource] Using auto-detected path: "${fullPath}" with ${bestPath.length} records`);
-          extractedData = extractDataFromPath(jsonData, fullPath);
+            const jsonData = await response.json();
+            let extractedData = extractDataFromPath(jsonData, config.dataPath);
+
+            // Auto-detect array if needed
+            if (!Array.isArray(extractedData) && typeof extractedData === "object" && extractedData !== null) {
+              const paths = findArrayPaths(extractedData);
+              if (paths.length > 0) {
+                const bestPath = paths.reduce((a, b) => a.length > b.length ? a : b);
+                extractedData = extractDataFromPath(extractedData, bestPath.path);
+              }
+            }
+
+            const pageRecords = Array.isArray(extractedData) ? extractedData as Record<string, unknown>[] : [];
+            console.log(`[useDataSource] Page ${page} returned ${pageRecords.length} records`);
+
+            if (pageRecords.length === 0) {
+              hasMore = false;
+            } else {
+              allRecords.push(...pageRecords);
+              offset += pageRecords.length;
+              page++;
+
+              // Check if we got less than a full page (end of data)
+              if (pageRecords.length < recordsPerPage) {
+                hasMore = false;
+              }
+
+              // Check max records limit
+              if (maxRecords > 0 && allRecords.length >= maxRecords) {
+                hasMore = false;
+                allRecords = allRecords.slice(0, maxRecords);
+              }
+
+              // Safety limit to prevent infinite loops
+              if (page > 100) {
+                console.warn("[useDataSource] Safety limit reached (100 pages)");
+                hasMore = false;
+              }
+            }
+          }
+
+          console.log(`[useDataSource] Total records fetched: ${allRecords.length}`);
         }
+      } else {
+        // No pagination - single request
+        const response = await fetch(config.url);
+        if (!response.ok) {
+          throw new Error(`Erro ao buscar dados: HTTP ${response.status}`);
+        }
+
+        const jsonData = await response.json();
+        let extractedData = extractDataFromPath(jsonData, config.dataPath);
+
+        if (extractedData === undefined) {
+          throw new Error(`Caminho "${config.dataPath}" não encontrado nos dados`);
+        }
+
+        // Auto-detect arrays within objects
+        if (!Array.isArray(extractedData) && typeof extractedData === "object" && extractedData !== null) {
+          const paths = findArrayPaths(extractedData);
+          console.log("[useDataSource] Auto-detected array paths:", paths);
+
+          if (paths.length > 0) {
+            const bestPath = paths.reduce((a, b) => a.length > b.length ? a : b);
+            const fullPath = config.dataPath
+              ? `${config.dataPath}.${bestPath.path}`
+              : bestPath.path;
+
+            console.log(`[useDataSource] Using auto-detected path: "${fullPath}" with ${bestPath.length} records`);
+            extractedData = extractDataFromPath(jsonData, fullPath);
+          }
+        }
+
+        allRecords = Array.isArray(extractedData) ? extractedData as Record<string, unknown>[] : [extractedData as Record<string, unknown>];
       }
 
-      const records = Array.isArray(extractedData) ? extractedData : [extractedData];
-      console.log("[useDataSource] Records fetched:", records.length);
+      console.log("[useDataSource] Total records fetched:", allRecords.length);
 
-      setData(records as Record<string, unknown>[]);
-      return records as Record<string, unknown>[];
+      setData(allRecords);
+      return allRecords;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Erro desconhecido";
       setError(errorMessage);
