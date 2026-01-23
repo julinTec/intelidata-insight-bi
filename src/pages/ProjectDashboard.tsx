@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { DynamicKPI } from "@/components/ui/DynamicKPI";
 import { DynamicChart } from "@/components/ui/DynamicChart";
 import { DynamicTable } from "@/components/ui/DynamicTable";
+import { DynamicFilter } from "@/components/ui/DynamicFilter";
 import { DashboardBuilder } from "@/components/ui/DashboardBuilder";
 import { DashboardFilters } from "@/components/ui/DashboardFilters";
 import { ShareDashboard } from "@/components/ui/ShareDashboard";
@@ -25,6 +26,7 @@ import {
   ChevronRight,
   Home,
   FolderKanban,
+  Filter,
 } from "lucide-react";
 import type { Json } from "@/integrations/supabase/types";
 
@@ -133,6 +135,7 @@ export default function ProjectDashboard() {
   };
 
   // Separate widgets by type
+  const filterWidgets = widgets.filter((w) => w.widget_type === "filter");
   const kpiWidgets = widgets.filter((w) => w.widget_type === "kpi");
   const chartWidgets = widgets.filter((w) => w.widget_type === "chart");
   const tableWidgets = widgets.filter((w) => w.widget_type === "table");
@@ -275,6 +278,39 @@ export default function ProjectDashboard() {
                   widgetIds={widgets.map((w) => w.id)}
                   filterConfig={filters as unknown as Json}
                 />
+              </div>
+            )}
+
+            {/* Filter Widgets */}
+            {filterWidgets.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <Filter className="h-5 w-5 text-primary" />
+                  <h2 className="text-lg font-semibold">Filtros</h2>
+                </div>
+                <div className="space-y-4">
+                  {filterWidgets.map((widget) => (
+                    <div key={widget.id} className="relative group">
+                      <DynamicFilter
+                        title={widget.title}
+                        dataSourceId={widget.data_source_id || ""}
+                        config={widget.config as { fields: string[]; layout: "horizontal" | "vertical" }}
+                        filters={filters}
+                        onFiltersChange={setFilters}
+                        schemaInfo={schemaInfo}
+                        data={allData}
+                      />
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => handleDeleteWidget(widget.id)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

@@ -21,7 +21,7 @@ import {
   DialogFooter,
 } from "./dialog";
 import { toast } from "sonner";
-import { Plus, BarChart3, Hash, Loader2, FolderKanban, Upload, AlertCircle, Database, Link2, FileSpreadsheet, Table as TableIcon } from "lucide-react";
+import { Plus, BarChart3, Hash, Loader2, FolderKanban, Upload, AlertCircle, Database, Link2, FileSpreadsheet, Table as TableIcon, Filter } from "lucide-react";
 import { Checkbox } from "./checkbox";
 import type { Json } from "@/integrations/supabase/types";
 
@@ -52,7 +52,7 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
   const [loadingSources, setLoadingSources] = useState(false);
   
   const [selectedDataSource, setSelectedDataSource] = useState("");
-  const [widgetType, setWidgetType] = useState<"kpi" | "chart" | "table">("kpi");
+  const [widgetType, setWidgetType] = useState<"kpi" | "chart" | "table" | "filter">("kpi");
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -69,6 +69,10 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
   // Table config
   const [tableColumns, setTableColumns] = useState<string[]>([]);
   const [tablePageSize, setTablePageSize] = useState(10);
+
+  // Filter widget config
+  const [filterFields, setFilterFields] = useState<string[]>([]);
+  const [filterLayout, setFilterLayout] = useState<"horizontal" | "vertical">("horizontal");
 
   useEffect(() => {
     if (user && open) {
@@ -145,6 +149,11 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
           yField: valueField || undefined,
           aggregation: kpiAggregation,
         };
+      } else if (widgetType === "filter") {
+        config = {
+          fields: filterFields,
+          layout: filterLayout,
+        };
       } else {
         // table
         config = {
@@ -186,6 +195,8 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
     setValueField("");
     setTableColumns([]);
     setTablePageSize(10);
+    setFilterFields([]);
+    setFilterLayout("horizontal");
     if (!initialProjectId) {
       setSelectedProject("");
       setSelectedDataSource("");
@@ -341,7 +352,7 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
 
                 <div className="space-y-2">
                   <Label>Tipo de Widget</Label>
-                  <div className="flex gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <Button
                       type="button"
                       variant={widgetType === "kpi" ? "default" : "outline"}
@@ -368,6 +379,15 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
                     >
                       <TableIcon className="h-4 w-4 mr-2" />
                       Tabela
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={widgetType === "filter" ? "default" : "outline"}
+                      onClick={() => setWidgetType("filter")}
+                      className="flex-1"
+                    >
+                      <Filter className="h-4 w-4 mr-2" />
+                      Filtro
                     </Button>
                   </div>
                 </div>
@@ -534,6 +554,59 @@ export function DashboardBuilder({ onWidgetCreated, projectId: initialProjectId 
                           <SelectItem value="20">20</SelectItem>
                           <SelectItem value="50">50</SelectItem>
                           <SelectItem value="100">100</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
+
+                {widgetType === "filter" && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Campos para filtrar</Label>
+                      <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-3 border rounded-md bg-muted/20">
+                        {fields.length > 0 ? (
+                          fields.map((field) => (
+                            <label
+                              key={field}
+                              className="flex items-center gap-2 cursor-pointer text-sm hover:bg-muted/50 p-1 rounded"
+                            >
+                              <Checkbox
+                                checked={filterFields.includes(field)}
+                                onCheckedChange={(checked) => {
+                                  if (checked) {
+                                    setFilterFields([...filterFields, field]);
+                                  } else {
+                                    setFilterFields(filterFields.filter((c) => c !== field));
+                                  }
+                                }}
+                              />
+                              <span className="truncate">{field}</span>
+                            </label>
+                          ))
+                        ) : (
+                          <p className="col-span-2 text-sm text-muted-foreground text-center py-2">
+                            Selecione uma fonte de dados
+                          </p>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Selecione os campos que serão usados como filtros
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Layout</Label>
+                      <Select
+                        value={filterLayout}
+                        onValueChange={(v) => setFilterLayout(v as "horizontal" | "vertical")}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="horizontal">Horizontal</SelectItem>
+                          <SelectItem value="vertical">Vertical</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
