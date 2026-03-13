@@ -399,14 +399,14 @@ export default function ProjectDashboard() {
                         config={widget.config as Record<string, unknown>}
                         filters={filters}
                       />
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => handleDeleteWidget(widget.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="secondary" size="icon" className="h-6 w-6" onClick={() => openEditWidget(widget)}>
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button variant="destructive" size="icon" className="h-6 w-6" onClick={() => handleDeleteWidget(widget.id)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
