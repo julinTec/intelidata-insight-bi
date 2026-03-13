@@ -78,6 +78,9 @@ export default function ProjectDetails() {
   const [previewSource, setPreviewSource] = useState<DataSourceItem | null>(null);
   const [previewData, setPreviewData] = useState<Record<string, unknown>[]>([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [editingSource, setEditingSource] = useState<DataSourceItem | null>(null);
+  const [editSourceName, setEditSourceName] = useState("");
+  const [savingSource, setSavingSource] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
