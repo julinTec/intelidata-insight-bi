@@ -209,6 +209,36 @@ export default function Auth() {
                     {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Entrar
                   </Button>
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="w-full text-muted-foreground hover:text-primary"
+                    disabled={forgotLoading}
+                    onClick={async () => {
+                      if (!email) {
+                        toast({ variant: 'destructive', title: 'Digite seu email primeiro' });
+                        return;
+                      }
+                      const emailResult = emailSchema.safeParse(email);
+                      if (!emailResult.success) {
+                        toast({ variant: 'destructive', title: 'Email inválido' });
+                        return;
+                      }
+                      setForgotLoading(true);
+                      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                        redirectTo: `${window.location.origin}/reset-password`,
+                      });
+                      setForgotLoading(false);
+                      if (error) {
+                        toast({ variant: 'destructive', title: 'Erro', description: error.message });
+                      } else {
+                        toast({ title: 'Email enviado!', description: 'Verifique sua caixa de entrada para redefinir a senha.' });
+                      }
+                    }}
+                  >
+                    {forgotLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Esqueci minha senha
+                  </Button>
                 </form>
               </TabsContent>
 

@@ -119,17 +119,14 @@ export default function Upload() {
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
-        .from("data-files")
-        .getPublicUrl(filePath);
-
-      // Create data source record
+      // Create data source record - save the storage path (not public URL)
+      // because useDataSource uses supabase.storage.download(path) which works with private buckets
       const { error: dbError } = await supabase.from("data_sources").insert({
         user_id: user.id,
         project_id: selectedProject,
         name: dataSourceName || file.name,
         source_type: file.name.endsWith(".csv") ? "csv" : "excel",
-        file_url: publicUrl,
+        file_url: filePath,
         schema_info: { columns: parsedData.headers },
         row_count: parsedData.rowCount,
       });
