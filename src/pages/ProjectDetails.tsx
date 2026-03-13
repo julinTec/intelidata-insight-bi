@@ -512,6 +512,33 @@ export default function ProjectDetails() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Edit Data Source Dialog */}
+        <Dialog open={!!editingSource} onOpenChange={() => setEditingSource(null)}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Renomear Fonte de Dados</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 mt-2">
+              <div className="space-y-2">
+                <Label>Nome</Label>
+                <Input
+                  value={editSourceName}
+                  onChange={(e) => setEditSourceName(e.target.value)}
+                  placeholder="Nome da fonte de dados"
+                  className="input-dark"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditingSource(null)}>Cancelar</Button>
+              <Button onClick={handleEditSource} disabled={savingSource} className="btn-gradient">
+                {savingSource ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                Salvar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AppLayout>
   );
