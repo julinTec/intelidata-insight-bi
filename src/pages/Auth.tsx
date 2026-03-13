@@ -20,6 +20,7 @@ export default function Auth() {
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [forgotLoading, setForgotLoading] = useState(false);
   
   const { signIn, signUp, user } = useAuth();
   const navigate = useNavigate();
