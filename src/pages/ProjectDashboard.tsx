@@ -67,6 +67,10 @@ export default function ProjectDashboard() {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<Record<string, unknown>>({});
   const [allData, setAllData] = useState<Record<string, unknown>[]>([]);
+  const [editingWidget, setEditingWidget] = useState<DashboardWidget | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editConfig, setEditConfig] = useState<Record<string, unknown>>({});
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const loadDashboard = useCallback(async () => {
     if (!user || !projectId) return;
