@@ -132,16 +132,51 @@ export default function ProjectDashboard() {
   }, [loadDashboard]);
 
   const handleDeleteWidget = async (widgetId: string) => {
+    if (!confirm("Tem certeza que deseja remover este widget?")) return;
     try {
       const { error } = await supabase.from("dashboard_widgets").delete().eq("id", widgetId);
       if (error) throw error;
-
       setWidgets(widgets.filter((w) => w.id !== widgetId));
       toast.success("Widget removido!");
     } catch (error) {
       console.error(error);
       toast.error("Erro ao remover widget");
     }
+  };
+
+  const openEditWidget = (widget: DashboardWidget) => {
+    setEditingWidget(widget);
+    setEditTitle(widget.title);
+    setEditConfig((widget.config as Record<string, unknown>) || {});
+  };
+
+  const handleSaveWidget = async () => {
+    if (!editingWidget) return;
+    setSavingEdit(true);
+    try {
+      const { error } = await supabase
+        .from("dashboard_widgets")
+        .update({ title: editTitle, config: editConfig as Json })
+        .eq("id", editingWidget.id);
+      if (error) throw error;
+      setWidgets(widgets.map((w) =>
+        w.id === editingWidget.id ? { ...w, title: editTitle, config: editConfig as Json } : w
+      ));
+      setEditingWidget(null);
+      toast.success("Widget atualizado!");
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao atualizar widget");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const getFieldsForWidget = (widget: DashboardWidget): string[] => {
+    const ds = dataSources.find((d) => d.id === widget.data_source_id);
+    if (!ds?.schema_info) return [];
+    const schema = ds.schema_info as { columns?: Array<{ name: string }> };
+    return schema.columns?.map((c) => c.name) || [];
   };
 
   // Separate widgets by type
