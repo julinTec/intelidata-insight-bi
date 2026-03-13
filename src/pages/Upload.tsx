@@ -31,7 +31,7 @@ export default function Upload() {
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
 
   // Load projects on mount
-  useState(() => {
+  useEffect(() => {
     if (user) {
       supabase
         .from("projects")
@@ -41,7 +41,7 @@ export default function Upload() {
           if (data) setProjects(data);
         });
     }
-  });
+  }, [user]);
 
   const parseCSV = (text: string): ParsedData => {
     const lines = text.trim().split("\n");
