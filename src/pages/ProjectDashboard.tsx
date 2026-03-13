@@ -445,6 +445,148 @@ export default function ProjectDashboard() {
           </div>
         )}
       </div>
+
+      {/* Edit Widget Dialog */}
+      <Dialog open={!!editingWidget} onOpenChange={() => setEditingWidget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Widget</DialogTitle>
+          </DialogHeader>
+          {editingWidget && (
+            <div className="space-y-4 mt-2">
+              <div className="space-y-2">
+                <Label>Título</Label>
+                <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+              </div>
+
+              {editingWidget.widget_type === "kpi" && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Campo</Label>
+                    <Select value={(editConfig.field as string) || "__none__"} onValueChange={(v) => setEditConfig({ ...editConfig, field: v === "__none__" ? undefined : v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Contar registros</SelectItem>
+                        {getFieldsForWidget(editingWidget).map((f) => (
+                          <SelectItem key={f} value={f}>{f}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Agregação</Label>
+                      <Select value={(editConfig.aggregation as string) || "count"} onValueChange={(v) => setEditConfig({ ...editConfig, aggregation: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="count">Contar</SelectItem>
+                          <SelectItem value="sum">Soma</SelectItem>
+                          <SelectItem value="avg">Média</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Formato</Label>
+                      <Select value={(editConfig.format as string) || "number"} onValueChange={(v) => setEditConfig({ ...editConfig, format: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="number">Número</SelectItem>
+                          <SelectItem value="currency">Moeda (R$)</SelectItem>
+                          <SelectItem value="percent">Percentual</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {editingWidget.widget_type === "chart" && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Tipo de Gráfico</Label>
+                    <Select value={(editConfig.chartType as string) || "bar"} onValueChange={(v) => setEditConfig({ ...editConfig, chartType: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="bar">Barras</SelectItem>
+                        <SelectItem value="line">Linhas</SelectItem>
+                        <SelectItem value="area">Área</SelectItem>
+                        <SelectItem value="pie">Pizza</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Agrupar por</Label>
+                    <Select value={(editConfig.groupBy as string) || ""} onValueChange={(v) => setEditConfig({ ...editConfig, groupBy: v })}>
+                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectContent>
+                        {getFieldsForWidget(editingWidget).map((f) => (
+                          <SelectItem key={f} value={f}>{f}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Campo de Valor</Label>
+                    <Select value={(editConfig.yField as string) || "__none__"} onValueChange={(v) => setEditConfig({ ...editConfig, yField: v === "__none__" ? undefined : v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Contar registros</SelectItem>
+                        {getFieldsForWidget(editingWidget).map((f) => (
+                          <SelectItem key={f} value={f}>{f}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
+
+              {editingWidget.widget_type === "table" && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Colunas a exibir</Label>
+                    <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-3 border rounded-md bg-muted/20">
+                      {getFieldsForWidget(editingWidget).map((field) => (
+                        <label key={field} className="flex items-center gap-2 cursor-pointer text-sm hover:bg-muted/50 p-1 rounded">
+                          <Checkbox
+                            checked={((editConfig.columns as string[]) || []).includes(field)}
+                            onCheckedChange={(checked) => {
+                              const cols = (editConfig.columns as string[]) || [];
+                              setEditConfig({
+                                ...editConfig,
+                                columns: checked ? [...cols, field] : cols.filter((c) => c !== field),
+                              });
+                            }}
+                          />
+                          <span className="truncate">{field}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Registros por página</Label>
+                    <Select value={String((editConfig.pageSize as number) || 10)} onValueChange={(v) => setEditConfig({ ...editConfig, pageSize: Number(v) })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="5">5</SelectItem>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="20">20</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingWidget(null)}>Cancelar</Button>
+            <Button onClick={handleSaveWidget} disabled={savingEdit} className="btn-gradient">
+              {savingEdit ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Pencil className="h-4 w-4 mr-2" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }
