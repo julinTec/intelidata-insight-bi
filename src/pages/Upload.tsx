@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { FileUploader } from "@/components/ui/FileUploader";
@@ -31,7 +31,7 @@ export default function Upload() {
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
 
   // Load projects on mount
-  useState(() => {
+  useEffect(() => {
     if (user) {
       supabase
         .from("projects")
@@ -41,7 +41,7 @@ export default function Upload() {
           if (data) setProjects(data);
         });
     }
-  });
+  }, [user]);
 
   const parseCSV = (text: string): ParsedData => {
     const lines = text.trim().split("\n");
@@ -119,17 +119,14 @@ export default function Upload() {
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
-        .from("data-files")
-        .getPublicUrl(filePath);
-
-      // Create data source record
+      // Create data source record - save the storage path (not public URL)
+      // because useDataSource uses supabase.storage.download(path) which works with private buckets
       const { error: dbError } = await supabase.from("data_sources").insert({
         user_id: user.id,
         project_id: selectedProject,
         name: dataSourceName || file.name,
         source_type: file.name.endsWith(".csv") ? "csv" : "excel",
-        file_url: publicUrl,
+        file_url: filePath,
         schema_info: { columns: parsedData.headers },
         row_count: parsedData.rowCount,
       });

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { DataTable } from "@/components/ui/DataTable";
 import { ExportButton } from "@/components/ui/ExportButton";
 import { supabase } from "@/integrations/supabase/client";
@@ -78,6 +78,9 @@ export default function ProjectDetails() {
   const [previewSource, setPreviewSource] = useState<DataSourceItem | null>(null);
   const [previewData, setPreviewData] = useState<Record<string, unknown>[]>([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [editingSource, setEditingSource] = useState<DataSourceItem | null>(null);
+  const [editSourceName, setEditSourceName] = useState("");
+  const [savingSource, setSavingSource] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -172,6 +175,28 @@ export default function ProjectDetails() {
     } catch (error) {
       console.error(error);
       toast.error("Erro ao excluir fonte de dados");
+    }
+  };
+
+  const handleEditSource = async () => {
+    if (!editingSource || !editSourceName.trim()) return;
+    setSavingSource(true);
+    try {
+      const { error } = await supabase
+        .from("data_sources")
+        .update({ name: editSourceName })
+        .eq("id", editingSource.id);
+      if (error) throw error;
+      setDataSources(dataSources.map((s) =>
+        s.id === editingSource.id ? { ...s, name: editSourceName } : s
+      ));
+      setEditingSource(null);
+      toast.success("Fonte de dados renomeada!");
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao renomear fonte de dados");
+    } finally {
+      setSavingSource(false);
     }
   };
 
@@ -389,14 +414,27 @@ export default function ProjectDetails() {
                         </p>
                       </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive"
-                      onClick={() => handleDeleteSource(source.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => {
+                          setEditingSource(source);
+                          setEditSourceName(source.name);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive"
+                        onClick={() => handleDeleteSource(source.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" className="flex-1" onClick={() => handlePreview(source)}>
@@ -472,6 +510,33 @@ export default function ProjectDetails() {
                 <p className="text-center text-muted-foreground py-8">Nenhum dado encontrado</p>
               )}
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Data Source Dialog */}
+        <Dialog open={!!editingSource} onOpenChange={() => setEditingSource(null)}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Renomear Fonte de Dados</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 mt-2">
+              <div className="space-y-2">
+                <Label>Nome</Label>
+                <Input
+                  value={editSourceName}
+                  onChange={(e) => setEditSourceName(e.target.value)}
+                  placeholder="Nome da fonte de dados"
+                  className="input-dark"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditingSource(null)}>Cancelar</Button>
+              <Button onClick={handleEditSource} disabled={savingSource} className="btn-gradient">
+                {savingSource ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                Salvar
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

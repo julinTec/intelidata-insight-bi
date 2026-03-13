@@ -27,8 +27,14 @@ import {
   Home,
   FolderKanban,
   Filter,
+  Pencil,
 } from "lucide-react";
 import type { Json } from "@/integrations/supabase/types";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface Project {
   id: string;
@@ -61,6 +67,10 @@ export default function ProjectDashboard() {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<Record<string, unknown>>({});
   const [allData, setAllData] = useState<Record<string, unknown>[]>([]);
+  const [editingWidget, setEditingWidget] = useState<DashboardWidget | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editConfig, setEditConfig] = useState<Record<string, unknown>>({});
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const loadDashboard = useCallback(async () => {
     if (!user || !projectId) return;
@@ -122,16 +132,51 @@ export default function ProjectDashboard() {
   }, [loadDashboard]);
 
   const handleDeleteWidget = async (widgetId: string) => {
+    if (!confirm("Tem certeza que deseja remover este widget?")) return;
     try {
       const { error } = await supabase.from("dashboard_widgets").delete().eq("id", widgetId);
       if (error) throw error;
-
       setWidgets(widgets.filter((w) => w.id !== widgetId));
       toast.success("Widget removido!");
     } catch (error) {
       console.error(error);
       toast.error("Erro ao remover widget");
     }
+  };
+
+  const openEditWidget = (widget: DashboardWidget) => {
+    setEditingWidget(widget);
+    setEditTitle(widget.title);
+    setEditConfig((widget.config as Record<string, unknown>) || {});
+  };
+
+  const handleSaveWidget = async () => {
+    if (!editingWidget) return;
+    setSavingEdit(true);
+    try {
+      const { error } = await supabase
+        .from("dashboard_widgets")
+        .update({ title: editTitle, config: editConfig as Json })
+        .eq("id", editingWidget.id);
+      if (error) throw error;
+      setWidgets(widgets.map((w) =>
+        w.id === editingWidget.id ? { ...w, title: editTitle, config: editConfig as Json } : w
+      ));
+      setEditingWidget(null);
+      toast.success("Widget atualizado!");
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao atualizar widget");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const getFieldsForWidget = (widget: DashboardWidget): string[] => {
+    const ds = dataSources.find((d) => d.id === widget.data_source_id);
+    if (!ds?.schema_info) return [];
+    const schema = ds.schema_info as { columns?: Array<{ name: string }> };
+    return schema.columns?.map((c) => c.name) || [];
   };
 
   // Separate widgets by type
@@ -300,14 +345,14 @@ export default function ProjectDashboard() {
                         schemaInfo={schemaInfo}
                         data={allData}
                       />
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => handleDeleteWidget(widget.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="secondary" size="icon" className="h-6 w-6" onClick={() => openEditWidget(widget)}>
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button variant="destructive" size="icon" className="h-6 w-6" onClick={() => handleDeleteWidget(widget.id)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -327,14 +372,14 @@ export default function ProjectDashboard() {
                         config={widget.config as Record<string, unknown>}
                         filters={filters}
                       />
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => handleDeleteWidget(widget.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="secondary" size="icon" className="h-6 w-6" onClick={() => openEditWidget(widget)}>
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button variant="destructive" size="icon" className="h-6 w-6" onClick={() => handleDeleteWidget(widget.id)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -354,14 +399,14 @@ export default function ProjectDashboard() {
                         config={widget.config as Record<string, unknown>}
                         filters={filters}
                       />
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => handleDeleteWidget(widget.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="secondary" size="icon" className="h-6 w-6" onClick={() => openEditWidget(widget)}>
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button variant="destructive" size="icon" className="h-6 w-6" onClick={() => handleDeleteWidget(widget.id)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -384,14 +429,14 @@ export default function ProjectDashboard() {
                         config={widget.config as { columns?: string[]; pageSize?: number }}
                         filters={filters}
                       />
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => handleDeleteWidget(widget.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="secondary" size="icon" className="h-6 w-6" onClick={() => openEditWidget(widget)}>
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button variant="destructive" size="icon" className="h-6 w-6" onClick={() => handleDeleteWidget(widget.id)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -400,6 +445,148 @@ export default function ProjectDashboard() {
           </div>
         )}
       </div>
+
+      {/* Edit Widget Dialog */}
+      <Dialog open={!!editingWidget} onOpenChange={() => setEditingWidget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Widget</DialogTitle>
+          </DialogHeader>
+          {editingWidget && (
+            <div className="space-y-4 mt-2">
+              <div className="space-y-2">
+                <Label>Título</Label>
+                <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+              </div>
+
+              {editingWidget.widget_type === "kpi" && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Campo</Label>
+                    <Select value={(editConfig.field as string) || "__none__"} onValueChange={(v) => setEditConfig({ ...editConfig, field: v === "__none__" ? undefined : v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Contar registros</SelectItem>
+                        {getFieldsForWidget(editingWidget).map((f) => (
+                          <SelectItem key={f} value={f}>{f}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Agregação</Label>
+                      <Select value={(editConfig.aggregation as string) || "count"} onValueChange={(v) => setEditConfig({ ...editConfig, aggregation: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="count">Contar</SelectItem>
+                          <SelectItem value="sum">Soma</SelectItem>
+                          <SelectItem value="avg">Média</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Formato</Label>
+                      <Select value={(editConfig.format as string) || "number"} onValueChange={(v) => setEditConfig({ ...editConfig, format: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="number">Número</SelectItem>
+                          <SelectItem value="currency">Moeda (R$)</SelectItem>
+                          <SelectItem value="percent">Percentual</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {editingWidget.widget_type === "chart" && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Tipo de Gráfico</Label>
+                    <Select value={(editConfig.chartType as string) || "bar"} onValueChange={(v) => setEditConfig({ ...editConfig, chartType: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="bar">Barras</SelectItem>
+                        <SelectItem value="line">Linhas</SelectItem>
+                        <SelectItem value="area">Área</SelectItem>
+                        <SelectItem value="pie">Pizza</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Agrupar por</Label>
+                    <Select value={(editConfig.groupBy as string) || ""} onValueChange={(v) => setEditConfig({ ...editConfig, groupBy: v })}>
+                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectContent>
+                        {getFieldsForWidget(editingWidget).map((f) => (
+                          <SelectItem key={f} value={f}>{f}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Campo de Valor</Label>
+                    <Select value={(editConfig.yField as string) || "__none__"} onValueChange={(v) => setEditConfig({ ...editConfig, yField: v === "__none__" ? undefined : v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Contar registros</SelectItem>
+                        {getFieldsForWidget(editingWidget).map((f) => (
+                          <SelectItem key={f} value={f}>{f}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
+
+              {editingWidget.widget_type === "table" && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Colunas a exibir</Label>
+                    <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-3 border rounded-md bg-muted/20">
+                      {getFieldsForWidget(editingWidget).map((field) => (
+                        <label key={field} className="flex items-center gap-2 cursor-pointer text-sm hover:bg-muted/50 p-1 rounded">
+                          <Checkbox
+                            checked={((editConfig.columns as string[]) || []).includes(field)}
+                            onCheckedChange={(checked) => {
+                              const cols = (editConfig.columns as string[]) || [];
+                              setEditConfig({
+                                ...editConfig,
+                                columns: checked ? [...cols, field] : cols.filter((c) => c !== field),
+                              });
+                            }}
+                          />
+                          <span className="truncate">{field}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Registros por página</Label>
+                    <Select value={String((editConfig.pageSize as number) || 10)} onValueChange={(v) => setEditConfig({ ...editConfig, pageSize: Number(v) })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="5">5</SelectItem>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="20">20</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingWidget(null)}>Cancelar</Button>
+            <Button onClick={handleSaveWidget} disabled={savingEdit} className="btn-gradient">
+              {savingEdit ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Pencil className="h-4 w-4 mr-2" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }
