@@ -178,6 +178,28 @@ export default function ProjectDetails() {
     }
   };
 
+  const handleEditSource = async () => {
+    if (!editingSource || !editSourceName.trim()) return;
+    setSavingSource(true);
+    try {
+      const { error } = await supabase
+        .from("data_sources")
+        .update({ name: editSourceName })
+        .eq("id", editingSource.id);
+      if (error) throw error;
+      setDataSources(dataSources.map((s) =>
+        s.id === editingSource.id ? { ...s, name: editSourceName } : s
+      ));
+      setEditingSource(null);
+      toast.success("Fonte de dados renomeada!");
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao renomear fonte de dados");
+    } finally {
+      setSavingSource(false);
+    }
+  };
+
   const handlePreview = async (source: DataSourceItem) => {
     setPreviewSource(source);
     setLoadingPreview(true);
