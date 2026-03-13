@@ -303,7 +303,24 @@ export default function Settings() {
           <p className="text-sm text-muted-foreground mb-4">
             Ações irreversíveis. Tenha cuidado ao usar estas opções.
           </p>
-          <Button variant="destructive" disabled>
+          <Button
+            variant="destructive"
+            onClick={async () => {
+              if (!confirm("Tem certeza que deseja excluir sua conta? Esta ação é IRREVERSÍVEL e apagará todos os seus dados.")) return;
+              if (!confirm("ÚLTIMA CONFIRMAÇÃO: Todos os seus projetos, análises e dashboards serão apagados permanentemente. Continuar?")) return;
+              
+              try {
+                const { error } = await supabase.functions.invoke("delete-account");
+                if (error) throw error;
+                toast.success("Conta excluída com sucesso.");
+                await supabase.auth.signOut();
+                window.location.href = "/auth";
+              } catch (error) {
+                console.error(error);
+                toast.error("Erro ao excluir conta. Tente novamente.");
+              }
+            }}
+          >
             Excluir Conta
           </Button>
         </div>
