@@ -1,38 +1,26 @@
 
 
-## Diagnóstico: Conta `juliocezarestudos35@gmail.com` não existe
+## Plano: Configurar Admin para conta criada
 
-Após investigação completa no banco de dados, descobri que:
+A conta `juliocezarestudos35@gmail.com` (id: `40ec3a4d-7c3a-4c8a-92b0-b2af75f6bc4f`) já existe e está logada. Os dados do banco mostram que ela ainda não tem role admin e está com `is_paid = false`, `subscription_status = 'trial'`.
 
-1. **A conta `juliocezarestudos35@gmail.com` nunca foi criada no sistema.** Ela não existe na tabela de usuários.
-2. A única conta existente é `juliocezarvieira21@gmail.com` (id: `1c1463ff-...`)
-3. O role admin foi inserido para um ID (`be18eb87-...`) que não corresponde a nenhum usuário real — por isso o admin nunca funcionou.
-4. O email de recuperação retornou sucesso (status 200), mas o sistema de autenticação não envia emails de recuperação para contas inexistentes (retorna 200 por segurança para não revelar se o email existe).
+### Ações (apenas dados, sem alteração de código)
 
-### Além disso: sem domínio de email configurado
+**1. Inserir role admin na tabela `user_roles`**
+```sql
+INSERT INTO user_roles (user_id, role)
+VALUES ('40ec3a4d-7c3a-4c8a-92b0-b2af75f6bc4f', 'admin')
+ON CONFLICT (user_id, role) DO NOTHING;
+```
 
-Este projeto não tem um domínio de email personalizado configurado. Os emails de autenticação (recuperação de senha, confirmação de cadastro) são enviados pelo serviço padrão, que pode ter limitações de entrega (spam, atraso, etc.).
+**2. Atualizar perfil para admin com acesso total**
+```sql
+UPDATE profiles
+SET is_paid = true,
+    subscription_status = 'admin',
+    paid_until = '2099-12-31T23:59:59Z'
+WHERE id = '40ec3a4d-7c3a-4c8a-92b0-b2af75f6bc4f';
+```
 
-### Plano de ação
-
-**Passo 1: Criar a conta `juliocezarestudos35@gmail.com`**
-- Você precisa se cadastrar normalmente pela tela de cadastro do app usando o email `juliocezarestudos35@gmail.com`
-- Ou posso habilitar auto-confirmação temporariamente para que a conta seja criada sem precisar confirmar por email
-
-**Passo 2: Configurar como admin**
-- Após a conta ser criada, insiro o role admin e atualizo o perfil com `is_paid = true` e `subscription_status = 'admin'`
-
-**Passo 3: Corrigir a conta existente**
-- Promover `juliocezarvieira21@gmail.com` a admin também (se desejar), ou manter como user normal
-
-**Passo 4 (recomendado): Configurar domínio de email**
-- Para que emails de recuperação de senha e confirmação cheguem de forma confiável, recomendo configurar um domínio de email personalizado
-
-### Ação imediata sugerida
-
-A forma mais rápida de resolver agora:
-1. Habilito auto-confirmação de email temporariamente
-2. Você cria a conta `juliocezarestudos35@gmail.com` pela tela de cadastro
-3. Eu insiro o role admin e configuro o perfil
-4. Desabilito auto-confirmação depois se desejar
+Após isso, basta recarregar a página para o sistema reconhecer o admin (sem banner de trial, sem overlay de pagamento, com acesso ao painel Admin).
 
