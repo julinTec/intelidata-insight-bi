@@ -15,4 +15,4 @@ export const SUPPORT_URL = "mailto:suporte@intelidata.com";
 export const PLAN_PRICE = "R$29,90/mês";
 
 /** Nome do produto */
-export const PRODUCT_NAME = "InteliData";
+export const PRODUCT_NAME = "BI Assistant";
